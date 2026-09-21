@@ -13,23 +13,24 @@ app.innerHTML = `
     <section class="sun-stage" aria-label="声音播放器">
       <div class="ambient-stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <canvas id="audioCanvas" aria-hidden="true"></canvas>
-      <button class="sun" id="sunButton" type="button" aria-label="播放">
-        <span class="sun-surface" aria-hidden="true"></span><span class="play-mark" aria-hidden="true"></span>
-      </button>
+      <div class="sun" id="sunVisual" aria-hidden="true"><span class="sun-surface"></span></div>
     </section>
     <section class="spoken-copy" aria-live="polite">
       <p class="spoken-en" id="spokenEn">Touch the light to begin.</p>
       <p class="spoken-zh" id="spokenZh">触碰这束光，听见哥哥的声音。</p>
     </section>
     <section class="timeline" aria-label="播放进度">
-      <input id="seek" class="seek" type="range" min="0" max="1000" value="0" aria-label="播放进度">
-      <div class="time-row"><span id="current">0:00</span><span id="total">0:00</span></div>
+      <button class="play-control" id="playButton" type="button" aria-label="播放"><span aria-hidden="true"></span></button>
+      <div class="timeline-main">
+        <input id="seek" class="seek" type="range" min="0" max="1000" value="0" aria-label="播放进度">
+        <div class="time-row"><span id="current">0:00</span><span id="total">0:00</span></div>
+      </div>
       <p class="status" id="status" role="status"></p>
     </section>
-    <section class="collection" aria-labelledby="collectionTitle">
-      <div class="collection-heading"><span></span><h1 id="collectionTitle">我们的收藏</h1><span></span></div>
+    <details class="collection">
+      <summary><span>我们的收藏</span><span class="collection-count" id="collectionCount">01</span></summary>
       <div class="collection-track" id="collectionTrack"></div>
-    </section>
+    </details>
   </main>
   <audio id="voiceAudio" preload="metadata" playsinline></audio>
 `;
@@ -46,6 +47,7 @@ let audioContext = null;
 let analyser = null;
 let frequencyData = null;
 let smooth = { bass: 0, mid: 0, high: 0 };
+let shownCaption = '';
 
 function readSavedState() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
@@ -61,11 +63,12 @@ function persist() {
 
 function renderCollection() {
   $('availableCount').textContent = available.length;
-  $('collectionTrack').innerHTML = voices.map((voice, index) => `
-    <button class="voice-token tone-${voice.tone || index + 1} ${voice.id === currentId ? 'is-active' : ''} ${voice.audioUrl ? '' : 'is-locked'}" type="button" data-voice="${voice.id}" aria-label="${voice.audioUrl ? `播放${voice.shortTitle || voice.title}` : `${voice.shortTitle || voice.title}，尚未开放`}" ${voice.audioUrl ? '' : 'aria-disabled="true"'}>
-      <span class="mini-sun" aria-hidden="true"></span>
-      <span class="token-title">${voice.shortTitle || voice.title}</span>
-      <span class="token-state">${voice.audioUrl ? 'VOICE 01' : 'SOON'}</span>
+  $('collectionCount').textContent = String(available.length).padStart(2, '0');
+  $('collectionTrack').innerHTML = available.map((voice, index) => `
+    <button class="voice-row ${voice.id === currentId ? 'is-active' : ''}" type="button" data-voice="${voice.id}" aria-label="播放${voice.title}">
+      <span class="voice-number">${String(index + 1).padStart(2, '0')}</span>
+      <span class="voice-meta"><span class="voice-title">${voice.title}</span><span class="voice-date">${voice.date}</span></span>
+      <span class="voice-duration">${formatTime(voice.duration, false)}</span>
     </button>`).join('');
 }
 
@@ -74,19 +77,23 @@ const activeCaption = (voice, time) => voice.captions?.find((caption) => time >=
 function updateCopy() {
   const voice = currentVoice();
   const caption = activeCaption(voice, audio.currentTime || 0);
+  const nextKey = caption ? `${caption.start}:${caption.text}` : '';
+  if (nextKey === shownCaption) return;
+  shownCaption = nextKey;
+  const copy = document.querySelector('.spoken-copy');
   if (caption) {
     $('spokenEn').textContent = caption.text;
     $('spokenZh').textContent = caption.translation || '';
   } else if (!voice.audioUrl) {
     $('spokenEn').textContent = 'A voice is waiting here.';
     $('spokenZh').textContent = '这颗太阳还在等下一段声音。';
-  } else if ((audio.currentTime || 0) > 0) {
-    $('spokenEn').textContent = voice.outro || 'Stay a little longer.';
-    $('spokenZh').textContent = voice.outroZh || '再陪哥哥听一会儿。';
   } else {
-    $('spokenEn').textContent = voice.intro || 'Touch the light to begin.';
-    $('spokenZh').textContent = voice.introZh || '触碰这束光，听见哥哥的声音。';
+    $('spokenEn').textContent = '';
+    $('spokenZh').textContent = '';
   }
+  copy.classList.remove('is-entering');
+  void copy.offsetWidth;
+  copy.classList.add('is-entering');
 }
 
 function updatePlayer() {
@@ -96,14 +103,15 @@ function updatePlayer() {
   if (!dragging) $('seek').value = duration ? Math.round((time / duration) * 1000) : 0;
   $('current').textContent = formatTime(time, false);
   $('total').textContent = formatTime(duration, false);
-  $('sunButton').classList.toggle('is-playing', !audio.paused);
-  $('sunButton').setAttribute('aria-label', audio.paused ? '播放' : '暂停');
+  $('playButton').classList.toggle('is-playing', !audio.paused);
+  $('playButton').setAttribute('aria-label', audio.paused ? '播放' : '暂停');
   updateCopy();
 }
 
 function loadVoice(voice, restore = false) {
   if (!voice) return;
   audio.pause();
+  shownCaption = null;
   currentId = voice.id;
   $('status').textContent = voice.audioUrl ? '' : '这段声音还没有被放进来。';
   if (voice.audioUrl) {
@@ -144,7 +152,7 @@ async function togglePlayback() {
     await ensureAudioGraph();
     if (audio.paused) await audio.play(); else audio.pause();
     $('status').textContent = '';
-  } catch { $('status').textContent = '没有成功播放，再轻轻点一次太阳。'; }
+  } catch { $('status').textContent = '没有成功播放，再轻轻点一次播放键。'; }
   updatePlayer();
 }
 
@@ -181,26 +189,17 @@ function drawAudioLight(now) {
   smooth.high += (target.high - smooth.high) * 0.06;
   const playing = !audio.paused;
   const idleBreath = reducedMotion.matches ? 0 : Math.sin(now / 1450) * 0.006;
-  const scale = 1 + idleBreath + (playing ? smooth.bass * 0.035 : 0);
+  const scale = 1 + idleBreath + (playing ? smooth.bass * 0.075 : 0);
+  const haloScale = 1.015 + (playing ? smooth.mid * 0.23 : 0);
   document.documentElement.style.setProperty('--sun-scale', scale.toFixed(4));
-  document.documentElement.style.setProperty('--sun-halo-alpha', (0.13 + smooth.mid * 0.09).toFixed(3));
-  document.documentElement.style.setProperty('--sun-shadow-alpha', (0.21 + smooth.mid * 0.09).toFixed(3));
+  document.documentElement.style.setProperty('--halo-scale', haloScale.toFixed(4));
+  document.documentElement.style.setProperty('--sun-halo-alpha', (0.12 + smooth.mid * 0.28).toFixed(3));
+  document.documentElement.style.setProperty('--sun-shadow-alpha', (0.15 + smooth.mid * 0.16).toFixed(3));
 
   if (!reducedMotion.matches) {
-    const cx = width / 2, cy = height / 2, radius = $('sunButton').getBoundingClientRect().width * 0.48;
-    const rayCount = 46;
-    ctx.save(); ctx.lineCap = 'round';
-    for (let i = 0; i < rayCount; i += 1) {
-      const angle = (i / rayCount) * Math.PI * 2;
-      const variation = 0.45 + 0.55 * Math.sin(i * 2.173 + now / 1100) ** 2;
-      const energy = playing ? smooth.mid : 0.035;
-      const length = 3 + variation * (7 + energy * 17), inner = radius + 7 + variation * 2;
-      ctx.strokeStyle = `rgba(244, 218, 168, ${0.055 + energy * 0.16})`;
-      ctx.lineWidth = 0.65 + variation * 0.6;
-      ctx.beginPath(); ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
-      ctx.lineTo(cx + Math.cos(angle) * (inner + length), cy + Math.sin(angle) * (inner + length)); ctx.stroke();
-    }
-    const particleCount = playing ? 15 : 8;
+    const cx = width / 2, cy = height / 2, radius = $('sunVisual').getBoundingClientRect().width * 0.48;
+    ctx.save();
+    const particleCount = playing ? 10 : 6;
     for (let i = 0; i < particleCount; i += 1) {
       const orbit = radius * (1.1 + ((i * 37) % 70) / 100);
       const angle = i * 2.399 + now * (0.000025 + (i % 3) * 0.000008);
@@ -214,7 +213,7 @@ function drawAudioLight(now) {
   requestAnimationFrame(drawAudioLight);
 }
 
-$('sunButton').addEventListener('click', togglePlayback);
+$('playButton').addEventListener('click', togglePlayback);
 $('collectionTrack').addEventListener('click', async (event) => {
   const button = event.target.closest('[data-voice]');
   if (!button) return;
