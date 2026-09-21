@@ -81,5 +81,4 @@ body{background:radial-gradient(circle at 50% 38%,rgba(111,82,46,.075),transpare
 @media(max-width:390px){.spoken-copy{margin-top:8px}.timeline{width:88%;margin-top:25px}}
 .timeline:hover,.timeline:focus-within{opacity:.1}
 .timeline.is-visible{opacity:.62}
-.timeline:has(:focus-visible){opacity:.72;pointer-events:auto}
 @media(hover:hover){.timeline:hover{opacity:.72}}
