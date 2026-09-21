@@ -32,6 +32,9 @@ app.innerHTML = `
         <input id="seek" class="seek" type="range" min="0" max="1000" value="0" aria-label="播放进度">
         <div class="time-row"><span id="current">0:00</span><span id="total">0:00</span></div>
       </div>
+      <button class="loop-control" id="loopButton" type="button" aria-label="列表循环">
+        <span class="loop-glyph" aria-hidden="true">↻</span><span class="loop-one" aria-hidden="true">1</span>
+      </button>
       <p class="status" id="status" role="status"></p>
     </section>
     <section class="collection-drawer" id="collectionDrawer" aria-labelledby="collectionTitle" hidden>
@@ -58,17 +61,20 @@ let analyser = null;
 let frequencyData = null;
 let smooth = { bass: 0, mid: 0, high: 0 };
 let shownCaption = '';
+let repeatMode = 'all';
+let controlsTimer = null;
 
 function readSavedState() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
 }
 const saved = readSavedState();
 if (voices.some((voice) => voice.id === saved.id)) currentId = saved.id;
+if (saved.repeatMode === 'one') repeatMode = 'one';
 const currentVoice = () => voices.find((voice) => voice.id === currentId) || voices[0];
 
 function persist() {
   if (!currentId) return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ id: currentId, time: Number.isFinite(audio.currentTime) ? audio.currentTime : 0 }));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ id: currentId, time: Number.isFinite(audio.currentTime) ? audio.currentTime : 0, repeatMode }));
 }
 
 function renderCollection() {
@@ -82,7 +88,26 @@ function renderCollection() {
     </button>`).join('');
 }
 
-const activeCaption = (voice, time) => voice.captions?.find((caption) => time >= caption.start && time < caption.end) || null;
+const activeCaption = (voice, time) => voice.captions?.find((caption) => time >= Math.max(0, caption.start - 0.08) && time < caption.end) || null;
+
+function updateRepeatControl(announce = false) {
+  const isOne = repeatMode === 'one';
+  $('loopButton').classList.toggle('is-one', isOne);
+  $('loopButton').setAttribute('aria-label', isOne ? '单曲循环' : '列表循环');
+  if (announce) {
+    $('status').textContent = isOne ? '单曲循环' : '按收藏顺序播放';
+    window.setTimeout(() => { if ($('status').textContent === (isOne ? '单曲循环' : '按收藏顺序播放')) $('status').textContent = ''; }, 1400);
+  }
+}
+
+function showControls(hold = false) {
+  const timeline = document.querySelector('.timeline');
+  timeline.classList.add('is-visible');
+  window.clearTimeout(controlsTimer);
+  if (!hold && !audio.paused && !dragging) {
+    controlsTimer = window.setTimeout(() => timeline.classList.remove('is-visible'), 4000);
+  }
+}
 
 function updateCopy() {
   const voice = currentVoice();
@@ -117,6 +142,7 @@ function updatePlayer() {
   $('playButton').classList.toggle('is-playing', isPlaying);
   document.querySelector('.sun-stage').classList.toggle('is-playing', isPlaying);
   $('playButton').setAttribute('aria-label', audio.paused ? '播放' : '暂停');
+  if (audio.paused) showControls(true);
   updateCopy();
 }
 
@@ -166,6 +192,24 @@ async function togglePlayback() {
     $('status').textContent = '';
   } catch { $('status').textContent = '没有成功播放，再轻轻点一次播放键。'; }
   updatePlayer();
+  showControls(audio.paused);
+}
+
+async function playFollowingVoice() {
+  if (!available.length) return;
+  if (repeatMode === 'one') {
+    audio.currentTime = 0;
+    await audio.play();
+    return;
+  }
+  const currentIndex = Math.max(0, available.findIndex((voice) => voice.id === currentId));
+  const nextVoice = available[(currentIndex + 1) % available.length];
+  loadVoice(nextVoice);
+  await new Promise((resolve) => {
+    if (audio.readyState >= 1) resolve();
+    else audio.addEventListener('loadedmetadata', resolve, { once: true });
+  });
+  await audio.play();
 }
 
 function average(start, end) {
@@ -203,7 +247,7 @@ function drawAudioLight(now) {
   const idleBreath = reducedMotion.matches ? 0 : Math.sin(now / 1450) * 0.006;
   const scale = 1 + idleBreath + (playing ? smooth.bass * 0.16 : 0);
   document.documentElement.style.setProperty('--core-scale', scale.toFixed(4));
-  document.documentElement.style.setProperty('--core-alpha', (0.44 + smooth.mid * 0.42).toFixed(3));
+  document.documentElement.style.setProperty('--core-alpha', (0.54 + smooth.mid * 0.38).toFixed(3));
 
   if (!reducedMotion.matches) {
     const cx = width / 2, cy = height / 2;
@@ -254,6 +298,16 @@ function drawAudioLight(now) {
 }
 
 $('playButton').addEventListener('click', togglePlayback);
+$('loopButton').addEventListener('click', () => {
+  repeatMode = repeatMode === 'all' ? 'one' : 'all';
+  updateRepeatControl(true);
+  persist();
+  showControls();
+});
+document.querySelector('.voice-archive').addEventListener('pointerdown', (event) => {
+  if (event.target.closest('.collection-drawer')) return;
+  showControls(event.target.closest('.timeline') !== null);
+});
 $('collectionCharm').addEventListener('click', () => {
   $('collectionDrawer').hidden = false;
   $('collectionCharm').setAttribute('aria-expanded', 'true');
@@ -275,7 +329,7 @@ $('collectionTrack').addEventListener('click', async (event) => {
   loadVoice(voice);
   if (wasCurrent) await togglePlayback();
 });
-$('seek').addEventListener('pointerdown', () => { dragging = true; });
+$('seek').addEventListener('pointerdown', () => { dragging = true; showControls(true); });
 $('seek').addEventListener('input', (event) => {
   const duration = Number.isFinite(audio.duration) ? audio.duration : (currentVoice()?.duration || 0);
   $('current').textContent = formatTime(duration * Number(event.target.value) / 1000, false);
@@ -283,15 +337,19 @@ $('seek').addEventListener('input', (event) => {
 $('seek').addEventListener('change', (event) => {
   const duration = Number.isFinite(audio.duration) ? audio.duration : (currentVoice()?.duration || 0);
   if (duration && currentVoice()?.audioUrl) audio.currentTime = duration * Number(event.target.value) / 1000;
-  dragging = false; updatePlayer(); persist();
+  dragging = false; updatePlayer(); persist(); showControls();
 });
 audio.addEventListener('timeupdate', () => { updatePlayer(); persist(); });
-audio.addEventListener('play', updatePlayer);
+audio.addEventListener('play', () => { updatePlayer(); showControls(); });
 audio.addEventListener('pause', updatePlayer);
-audio.addEventListener('ended', updatePlayer);
+audio.addEventListener('ended', async () => {
+  try { await playFollowingVoice(); } catch { updatePlayer(); }
+});
 audio.addEventListener('error', () => { $('status').textContent = '音频没有成功加载，请稍后再试。'; });
 window.addEventListener('pagehide', persist);
 window.addEventListener('resize', resizeCanvas);
 
 loadVoice(currentVoice(), true);
+updateRepeatControl();
+showControls(true);
 requestAnimationFrame(drawAudioLight);
