@@ -10,10 +10,13 @@ app.innerHTML = `
       <p class="archive-kicker">SHENSHU · VOICE ARCHIVE</p>
       <p class="archive-count"><span id="availableCount">0</span> SAVED VOICE</p>
     </header>
+    <button class="collection-charm" id="collectionCharm" type="button" aria-label="打开我们的收藏" aria-controls="collectionDrawer" aria-expanded="false">
+      <span class="charm-thread" aria-hidden="true"></span><span class="charm-drop" aria-hidden="true"></span>
+    </button>
     <section class="sun-stage" aria-label="声音播放器">
       <div class="ambient-stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <canvas id="audioCanvas" aria-hidden="true"></canvas>
-      <div class="sun" id="sunVisual" aria-hidden="true"><span class="sun-surface"></span></div>
+      <div class="sound-core" id="soundCore" aria-hidden="true"></div>
     </section>
     <section class="spoken-copy" aria-live="polite">
       <p class="spoken-en" id="spokenEn">Touch the light to begin.</p>
@@ -27,10 +30,13 @@ app.innerHTML = `
       </div>
       <p class="status" id="status" role="status"></p>
     </section>
-    <details class="collection">
-      <summary><span>我们的收藏</span><span class="collection-count" id="collectionCount">01</span></summary>
-      <div class="collection-track" id="collectionTrack"></div>
-    </details>
+    <section class="collection-drawer" id="collectionDrawer" aria-labelledby="collectionTitle" hidden>
+      <button class="collection-backdrop" id="collectionBackdrop" type="button" aria-label="关闭收藏"></button>
+      <div class="collection-panel">
+        <div class="collection-topline"><div><p>VOICE KEEPSAKES</p><h1 id="collectionTitle">我们的收藏 <span id="collectionCount">01</span></h1></div><button class="collection-close" id="collectionClose" type="button" aria-label="关闭收藏">×</button></div>
+        <div class="collection-track" id="collectionTrack"></div>
+      </div>
+    </section>
   </main>
   <audio id="voiceAudio" preload="metadata" playsinline></audio>
 `;
@@ -103,7 +109,9 @@ function updatePlayer() {
   if (!dragging) $('seek').value = duration ? Math.round((time / duration) * 1000) : 0;
   $('current').textContent = formatTime(time, false);
   $('total').textContent = formatTime(duration, false);
-  $('playButton').classList.toggle('is-playing', !audio.paused);
+  const isPlaying = !audio.paused;
+  $('playButton').classList.toggle('is-playing', isPlaying);
+  document.querySelector('.sun-stage').classList.toggle('is-playing', isPlaying);
   $('playButton').setAttribute('aria-label', audio.paused ? '播放' : '暂停');
   updateCopy();
 }
@@ -189,19 +197,45 @@ function drawAudioLight(now) {
   smooth.high += (target.high - smooth.high) * 0.06;
   const playing = !audio.paused;
   const idleBreath = reducedMotion.matches ? 0 : Math.sin(now / 1450) * 0.006;
-  const scale = 1 + idleBreath + (playing ? smooth.bass * 0.075 : 0);
-  const haloScale = 1.015 + (playing ? smooth.mid * 0.23 : 0);
-  document.documentElement.style.setProperty('--sun-scale', scale.toFixed(4));
-  document.documentElement.style.setProperty('--halo-scale', haloScale.toFixed(4));
-  document.documentElement.style.setProperty('--sun-halo-alpha', (0.12 + smooth.mid * 0.28).toFixed(3));
-  document.documentElement.style.setProperty('--sun-shadow-alpha', (0.15 + smooth.mid * 0.16).toFixed(3));
+  const scale = 1 + idleBreath + (playing ? smooth.bass * 0.16 : 0);
+  document.documentElement.style.setProperty('--core-scale', scale.toFixed(4));
+  document.documentElement.style.setProperty('--core-alpha', (0.44 + smooth.mid * 0.42).toFixed(3));
 
   if (!reducedMotion.matches) {
-    const cx = width / 2, cy = height / 2, radius = $('sunVisual').getBoundingClientRect().width * 0.48;
+    const cx = width / 2, cy = height / 2;
+    const fieldRadius = Math.min(width, height) * 0.43;
+    const energy = smooth.bass * 0.65 + smooth.mid * 0.95;
     ctx.save();
-    const particleCount = playing ? 10 : 6;
+    ctx.lineJoin = 'round';
+    for (let ring = 0; ring < 4; ring += 1) {
+      const speed = playing ? 1700 : 5200;
+      const phase = ((now / speed) + ring / 4) % 1;
+      const radius = fieldRadius * (0.24 + phase * 0.76);
+      const fade = Math.sin(Math.PI * phase) * (playing ? 1 : 0.28);
+      ctx.beginPath();
+      for (let point = 0; point <= 150; point += 1) {
+        const ratio = point / 150;
+        const angle = ratio * Math.PI * 2;
+        const bin = Math.min(95, Math.floor(ratio * 96));
+        const frequency = frequencyData ? frequencyData[bin] / 255 : 0;
+        const organic = Math.sin(angle * (3 + ring) + now / 1250 + ring) * (0.65 + ring * 0.18);
+        const response = playing ? (frequency - 0.18) * (4.2 + ring * 1.15) : 0;
+        const r = radius + organic + response;
+        const x = cx + Math.cos(angle) * r;
+        const y = cy + Math.sin(angle) * r * 0.965;
+        if (point === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = `rgba(230, 196, 142, ${0.018 + fade * (0.055 + energy * 0.105)})`;
+      ctx.lineWidth = 0.55 + energy * 0.85;
+      ctx.shadowColor = `rgba(232, 195, 136, ${0.1 + energy * 0.22})`;
+      ctx.shadowBlur = 7 + energy * 14;
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    const particleCount = playing ? 8 : 5;
     for (let i = 0; i < particleCount; i += 1) {
-      const orbit = radius * (1.1 + ((i * 37) % 70) / 100);
+      const orbit = fieldRadius * (0.52 + ((i * 37) % 54) / 100);
       const angle = i * 2.399 + now * (0.000025 + (i % 3) * 0.000008);
       const pulse = 0.5 + 0.5 * Math.sin(now / 900 + i * 1.7);
       const size = 0.45 + pulse * (0.7 + smooth.high * 0.7);
@@ -214,6 +248,18 @@ function drawAudioLight(now) {
 }
 
 $('playButton').addEventListener('click', togglePlayback);
+$('collectionCharm').addEventListener('click', () => {
+  $('collectionDrawer').hidden = false;
+  $('collectionCharm').setAttribute('aria-expanded', 'true');
+  document.body.classList.add('drawer-open');
+});
+function closeCollection() {
+  $('collectionDrawer').hidden = true;
+  $('collectionCharm').setAttribute('aria-expanded', 'false');
+  document.body.classList.remove('drawer-open');
+}
+$('collectionClose').addEventListener('click', closeCollection);
+$('collectionBackdrop').addEventListener('click', closeCollection);
 $('collectionTrack').addEventListener('click', async (event) => {
   const button = event.target.closest('[data-voice]');
   if (!button) return;
