@@ -61,7 +61,7 @@ let analyser = null;
 let frequencyData = null;
 let smooth = { bass: 0, mid: 0, high: 0 };
 let shownCaption = '';
-let repeatMode = 'all';
+let repeatMode = 'sequence';
 let controlsTimer = null;
 
 function readSavedState() {
@@ -93,10 +93,11 @@ const activeCaption = (voice, time) => voice.captions?.find((caption) => time >=
 function updateRepeatControl(announce = false) {
   const isOne = repeatMode === 'one';
   $('loopButton').classList.toggle('is-one', isOne);
-  $('loopButton').setAttribute('aria-label', isOne ? '单曲循环' : '列表循环');
+  $('loopButton').setAttribute('aria-label', isOne ? '关闭单曲循环' : '开启单曲循环');
   if (announce) {
-    $('status').textContent = isOne ? '单曲循环' : '按收藏顺序播放';
-    window.setTimeout(() => { if ($('status').textContent === (isOne ? '单曲循环' : '按收藏顺序播放')) $('status').textContent = ''; }, 1400);
+    const message = isOne ? '单曲循环' : '播完后继续下一条';
+    $('status').textContent = message;
+    window.setTimeout(() => { if ($('status').textContent === message) $('status').textContent = ''; }, 1400);
   }
 }
 
@@ -202,7 +203,12 @@ async function playFollowingVoice() {
     return;
   }
   const currentIndex = Math.max(0, available.findIndex((voice) => voice.id === currentId));
-  const nextVoice = available[(currentIndex + 1) % available.length];
+  const nextVoice = available[currentIndex + 1];
+  if (!nextVoice) {
+    updatePlayer();
+    persist();
+    return;
+  }
   loadVoice(nextVoice);
   await new Promise((resolve) => {
     if (audio.readyState >= 1) resolve();
@@ -244,9 +250,9 @@ function drawAudioLight(now) {
   smooth.high += (target.high - smooth.high) * 0.06;
   const playing = !audio.paused;
   const idleBreath = reducedMotion.matches ? 0 : Math.sin(now / 1450) * 0.006;
-  const scale = 1 + idleBreath + (playing ? smooth.bass * 0.16 : 0);
+  const scale = 1 + idleBreath + (playing ? smooth.bass * 0.21 + smooth.mid * 0.045 : 0);
   document.documentElement.style.setProperty('--core-scale', scale.toFixed(4));
-  document.documentElement.style.setProperty('--core-alpha', (0.54 + smooth.mid * 0.38).toFixed(3));
+  document.documentElement.style.setProperty('--core-alpha', (0.68 + smooth.mid * 0.3).toFixed(3));
 
   if (!reducedMotion.matches) {
     const cx = width / 2, cy = height / 2;
@@ -275,10 +281,10 @@ function drawAudioLight(now) {
         if (point === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.strokeStyle = `rgba(230, 196, 142, ${0.006 + fade * (0.025 + energy * 0.045)})`;
-      ctx.lineWidth = 0.42 + energy * 0.38;
-      ctx.shadowColor = `rgba(232, 195, 136, ${0.045 + energy * 0.08})`;
-      ctx.shadowBlur = 9 + energy * 8;
+      ctx.strokeStyle = `rgba(242, 224, 195, ${0.01 + fade * (0.04 + energy * 0.085)})`;
+      ctx.lineWidth = 0.46 + energy * 0.5;
+      ctx.shadowColor = `rgba(247, 229, 198, ${0.07 + energy * 0.13})`;
+      ctx.shadowBlur = 11 + energy * 12;
       ctx.stroke();
     }
     ctx.shadowBlur = 0;
@@ -288,7 +294,7 @@ function drawAudioLight(now) {
       const angle = i * 2.399 + now * (0.000025 + (i % 3) * 0.000008);
       const pulse = 0.5 + 0.5 * Math.sin(now / 900 + i * 1.7);
       const size = 0.45 + pulse * (0.7 + smooth.high * 0.7);
-      ctx.fillStyle = `rgba(247, 224, 184, ${0.08 + pulse * 0.18 + smooth.high * 0.08})`;
+      ctx.fillStyle = `rgba(235, 243, 249, ${0.13 + pulse * 0.25 + smooth.high * 0.1})`;
       ctx.beginPath(); ctx.arc(cx + Math.cos(angle) * orbit, cy + Math.sin(angle) * orbit * 0.72, size, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
@@ -301,7 +307,7 @@ $('playButton').addEventListener('click', async (event) => {
   if (event.detail) event.currentTarget.blur();
 });
 $('loopButton').addEventListener('click', (event) => {
-  repeatMode = repeatMode === 'all' ? 'one' : 'all';
+  repeatMode = repeatMode === 'one' ? 'sequence' : 'one';
   updateRepeatControl(true);
   persist();
   showControls();
@@ -354,5 +360,4 @@ window.addEventListener('resize', resizeCanvas);
 
 loadVoice(currentVoice(), true);
 updateRepeatControl();
-showControls(true);
 requestAnimationFrame(drawAudioLight);

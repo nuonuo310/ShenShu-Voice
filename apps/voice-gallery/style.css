@@ -82,3 +82,14 @@ body{background:radial-gradient(circle at 50% 38%,rgba(111,82,46,.075),transpare
 .timeline:hover,.timeline:focus-within{opacity:.1}
 .timeline.is-visible{opacity:.62}
 @media(hover:hover){.timeline:hover{opacity:.72}}
+
+/* v0.7 — the voice lights the room; controls stay out of its way. */
+.sound-core{background:radial-gradient(circle,rgba(255,255,246,1) 0%,rgba(255,242,211,.92) 8%,rgba(244,213,159,.58) 21%,rgba(217,169,102,.2) 42%,rgba(176,117,58,.035) 64%,transparent 78%);filter:blur(4px);box-shadow:0 0 50px rgba(249,224,180,.2),0 0 104px rgba(218,171,105,.09)}
+.sound-core::before{inset:-148%;background:radial-gradient(circle,rgba(255,239,205,.24) 0%,rgba(230,190,126,.105) 23%,rgba(190,132,70,.035) 48%,transparent 73%);filter:blur(25px)}
+.sound-core::after{inset:-235%;background:radial-gradient(circle,rgba(247,226,190,.105),rgba(208,157,91,.035) 32%,transparent 68%);filter:blur(35px)}
+.ambient-stars i{background:rgba(243,248,252,.9);box-shadow:0 0 8px rgba(229,240,249,.55),0 0 15px rgba(229,240,249,.2)}
+.ambient-stars i:nth-child(1){opacity:.52}.ambient-stars i:nth-child(2){opacity:.26}.ambient-stars i:nth-child(3){opacity:.36}.ambient-stars i:nth-child(4){opacity:.48}.ambient-stars i:nth-child(5){opacity:.25}.ambient-stars i:nth-child(6){opacity:.34}.ambient-stars i:nth-child(7){opacity:.2}.ambient-stars i:nth-child(8){opacity:.32}
+.timeline{opacity:0;pointer-events:none}
+.timeline:hover,.timeline:focus-within{opacity:0}
+.timeline.is-visible{opacity:.62;pointer-events:auto}
+@media(hover:hover){.timeline.is-visible:hover{opacity:.72}}
