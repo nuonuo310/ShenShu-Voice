@@ -1,14 +1,246 @@
-import {voices,categories,formatTime,getFavorites,toggleFavorite} from '../../packages/voice-data/index.js';
+import { voices, formatTime } from '../../packages/voice-data/index.js';
 import './style.css';
-const app=document.querySelector('#app');
-app.innerHTML=`<main class="shell" id="gallery"><div class="eyebrow">SHEN SHU · VOICE ARCHIVE</div><h1>沈述声音馆</h1><p class="sub">把声音留在这里，随时回来听。</p><div class="toolbar"><input id="search" class="search" placeholder="搜索标题或正文" aria-label="搜索语音"></div><nav class="tabs" id="tabs" aria-label="语音分类"></nav><section id="list" aria-label="语音列表"></section></main><section id="player" class="player" hidden aria-label="全屏播放器"><div class="player-inner"><div class="topline"><button class="plain" id="back">← 返回</button><span class="eyebrow">SHEN SHU · VOICE</span><button class="plain" id="playerFav" aria-label="收藏">♡</button></div><div class="orb-space"><div class="orb" id="orb" aria-hidden="true"></div></div><div class="player-copy"><div class="meta" id="playerMeta"></div><h2 id="playerTitle"></h2><div class="caption" id="caption" aria-live="off"></div><div class="transcript" id="transcript"></div></div><input class="seek" id="seek" type="range" min="0" max="1000" value="0" aria-label="播放进度"><div class="time"><span id="current">00:00</span><span id="total">00:00</span></div><div class="controls"><button id="loop" aria-label="循环播放" title="循环">↻</button><button id="prev" aria-label="上一条">⏮</button><button id="play" class="primary" aria-label="播放">▶</button><button id="next" aria-label="下一条">⏭</button><button id="download" aria-label="下载" title="下载">↓</button></div><div class="status" id="status" role="status"></div><div class="foot">A VOICE TO COME BACK TO</div></div></section>`;
-const $=id=>document.getElementById(id);const audio=new Audio();audio.preload='metadata';let category='全部',query='',currentId=null,loop=false,dragging=false,levels=Array.from({length:28},(_,i)=>.25+.75*Math.abs(Math.sin(i*2.39)));const saved=(()=>{try{return JSON.parse(localStorage.getItem('shenshu:player'))||{}}catch{return {}}})();
-const item=()=>voices.find(v=>v.id===currentId);const playable=()=>voices.filter(v=>v.audioUrl);const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function persist(){if(currentId)localStorage.setItem('shenshu:player',JSON.stringify({id:currentId,time:audio.currentTime||0,loop}))}
-function renderList(){const fav=getFavorites();$('tabs').innerHTML=categories.map(c=>`<button class="tab ${c===category?'active':''}" data-cat="${c}">${c}</button>`).join('');const list=voices.filter(v=>(category==='全部'||(category==='收藏'?fav.includes(v.id):v.category===category))&&`${v.title} ${v.body}`.toLowerCase().includes(query));$('list').innerHTML=list.length?list.map(v=>`<article class="entry"><button class="entry-main" data-open="${v.id}"><div class="meta">${v.date} · ${v.category} · ${formatTime(v.duration)}</div><div class="entry-title">${esc(v.title)}</div>${v.demo?'<span class="demo">演示数据 · 暂无音频</span>':'<span class="tag">▶ 点击聆听</span>'}</button><button class="icon-btn ${fav.includes(v.id)?'fav-on':''}" data-fav="${v.id}" aria-label="${fav.includes(v.id)?'取消收藏':'收藏'}">${fav.includes(v.id)?'♥':'♡'}</button></article>`).join(''):'<p class="empty">这里暂时还没有声音。</p>'}
-$('tabs').onclick=e=>{const b=e.target.closest('[data-cat]');if(b){category=b.dataset.cat;renderList()}};$('search').oninput=e=>{query=e.target.value.trim().toLowerCase();renderList()};$('list').onclick=e=>{const fav=e.target.closest('[data-fav]');if(fav){toggleFavorite(fav.dataset.fav);renderList();return}const b=e.target.closest('[data-open]');if(b)openVoice(b.dataset.open)};
-function load(v,restore=false){if(currentId!==v.id){audio.pause();currentId=v.id;audio.src=v.audioUrl||'';audio.load();audio.onloadedmetadata=()=>{if(restore&&saved.id===v.id&&saved.time)audio.currentTime=Math.min(saved.time,Math.max(0,audio.duration-.1));update()}}$('playerTitle').textContent=v.title;$('playerMeta').textContent=`${v.date} · ${v.category}`;$('transcript').textContent=v.body;$('status').textContent=v.demo?'演示内容，尚无可播放音频。':'';$('play').disabled=!v.audioUrl;$('download').disabled=!v.audioUrl;$('playerFav').textContent=getFavorites().includes(v.id)?'♥':'♡';$('playerFav').classList.toggle('fav-on',getFavorites().includes(v.id));update()}
-function openVoice(id){const v=voices.find(v=>v.id===id);if(!v)return;load(v,true);$('gallery').hidden=true;$('player').hidden=false;history.pushState({voice:id},'',`#voice=${encodeURIComponent(id)}`)}function closeVoice(fromPop=false){persist();$('gallery').hidden=false;$('player').hidden=true;renderList();if(!fromPop&&location.hash.startsWith('#voice='))history.replaceState({},' ',location.pathname+location.search)}$('back').onclick=()=>closeVoice();window.onpopstate=()=>{const id=decodeURIComponent(location.hash.replace('#voice=',''));if(location.hash.startsWith('#voice=')&&voices.some(v=>v.id===id)){load(voices.find(v=>v.id===id));$('gallery').hidden=true;$('player').hidden=false}else closeVoice(true)};
-function update(){const v=item();if(!v)return;const duration=Number.isFinite(audio.duration)?audio.duration:v.duration;const t=audio.currentTime||0;if(!dragging)$('seek').value=duration?Math.round(t/duration*1000):0;$('current').textContent=formatTime(t);$('total').textContent=formatTime(duration);$('play').textContent=audio.paused?'▶':'Ⅱ';$('play').setAttribute('aria-label',audio.paused?'播放':'暂停');const active=v.captions.find(c=>t>=c.start&&t<c.end);$('caption').textContent=active?.text||(v.demo?'等待真实录音':'声音正在这里，慢慢听。');$('loop').classList.toggle('active',loop)}
-$('play').onclick=async()=>{if(!item()?.audioUrl)return;try{if(audio.paused)await audio.play();else audio.pause();$('status').textContent=''}catch{$('status').textContent='播放失败，请确认音频文件可以访问。'}update()};$('loop').onclick=()=>{loop=!loop;audio.loop=loop;persist();update()};$('playerFav').onclick=()=>{if(!currentId)return;toggleFavorite(currentId);$('playerFav').textContent=getFavorites().includes(currentId)?'♥':'♡';$('playerFav').classList.toggle('fav-on',getFavorites().includes(currentId))};function switchVoice(delta){const list=playable(),i=list.findIndex(v=>v.id===currentId);if(i<0||!list.length)return;load(list[(i+delta+list.length)%list.length]);audio.play().catch(()=>{$('status').textContent='点击播放以继续。'})}$('prev').onclick=()=>switchVoice(-1);$('next').onclick=()=>switchVoice(1);$('download').onclick=()=>{if(!item()?.audioUrl)return;const a=document.createElement('a');a.href=item().audioUrl;a.download=`${item().id}.mp3`;document.body.append(a);a.click();a.remove()};$('seek').onpointerdown=()=>dragging=true;$('seek').oninput=e=>{const d=Number.isFinite(audio.duration)?audio.duration:item()?.duration||0;$('current').textContent=formatTime(d*Number(e.target.value)/1000)};$('seek').onchange=e=>{const d=Number.isFinite(audio.duration)?audio.duration:item()?.duration||0;if(item()?.audioUrl&&d)audio.currentTime=d*Number(e.target.value)/1000;dragging=false;update();persist()};audio.ontimeupdate=()=>{update();persist()};audio.onplay=update;audio.onpause=()=>{update();persist()};audio.onended=()=>{update();persist()};audio.onerror=()=>{$('status').textContent='音频加载失败。请检查文件路径。'};window.addEventListener('pagehide',persist);window.addEventListener('voice-favorites',renderList);
-let last=0;function animate(t){if(t-last>65){last=t;const orb=$('orb');if(!audio.paused&&item()?.audioUrl){const level=levels[Math.floor((audio.currentTime*12)%levels.length)];orb.style.setProperty('--breath',String(1+.018*level+.012*Math.sin(t/480)))}else orb.style.setProperty('--breath','1')}requestAnimationFrame(animate)}requestAnimationFrame(animate);renderList();if(location.hash.startsWith('#voice=')){const id=decodeURIComponent(location.hash.slice(7));if(voices.some(v=>v.id===id)){load(voices.find(v=>v.id===id),true);$('gallery').hidden=true;$('player').hidden=false}}else if(saved.id&&voices.some(v=>v.id===saved.id)){load(voices.find(v=>v.id===saved.id),true);$('gallery').hidden=false;$('player').hidden=true}audio.loop=loop=Boolean(saved.loop);
+
+const STORAGE_KEY = 'shenshu:sun-player';
+const app = document.querySelector('#app');
+
+app.innerHTML = `
+  <main class="voice-archive">
+    <header class="archive-header">
+      <p class="archive-kicker">SHENSHU · VOICE ARCHIVE</p>
+      <p class="archive-count"><span id="availableCount">0</span> SAVED VOICE</p>
+    </header>
+    <section class="sun-stage" aria-label="声音播放器">
+      <div class="ambient-stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <canvas id="audioCanvas" aria-hidden="true"></canvas>
+      <button class="sun" id="sunButton" type="button" aria-label="播放">
+        <span class="sun-surface" aria-hidden="true"></span><span class="play-mark" aria-hidden="true"></span>
+      </button>
+    </section>
+    <section class="spoken-copy" aria-live="polite">
+      <p class="spoken-en" id="spokenEn">Touch the light to begin.</p>
+      <p class="spoken-zh" id="spokenZh">触碰这束光，听见哥哥的声音。</p>
+    </section>
+    <section class="timeline" aria-label="播放进度">
+      <input id="seek" class="seek" type="range" min="0" max="1000" value="0" aria-label="播放进度">
+      <div class="time-row"><span id="current">0:00</span><span id="total">0:00</span></div>
+      <p class="status" id="status" role="status"></p>
+    </section>
+    <section class="collection" aria-labelledby="collectionTitle">
+      <div class="collection-heading"><span></span><h1 id="collectionTitle">我们的收藏</h1><span></span></div>
+      <div class="collection-track" id="collectionTrack"></div>
+    </section>
+  </main>
+  <audio id="voiceAudio" preload="metadata" playsinline></audio>
+`;
+
+const $ = (id) => document.getElementById(id);
+const audio = $('voiceAudio');
+const canvas = $('audioCanvas');
+const ctx = canvas.getContext('2d');
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const available = voices.filter((voice) => voice.audioUrl);
+let currentId = available[0]?.id ?? voices[0]?.id ?? null;
+let dragging = false;
+let audioContext = null;
+let analyser = null;
+let frequencyData = null;
+let smooth = { bass: 0, mid: 0, high: 0 };
+
+function readSavedState() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
+}
+const saved = readSavedState();
+if (voices.some((voice) => voice.id === saved.id)) currentId = saved.id;
+const currentVoice = () => voices.find((voice) => voice.id === currentId) || voices[0];
+
+function persist() {
+  if (!currentId) return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ id: currentId, time: Number.isFinite(audio.currentTime) ? audio.currentTime : 0 }));
+}
+
+function renderCollection() {
+  $('availableCount').textContent = available.length;
+  $('collectionTrack').innerHTML = voices.map((voice, index) => `
+    <button class="voice-token tone-${voice.tone || index + 1} ${voice.id === currentId ? 'is-active' : ''} ${voice.audioUrl ? '' : 'is-locked'}" type="button" data-voice="${voice.id}" aria-label="${voice.audioUrl ? `播放${voice.shortTitle || voice.title}` : `${voice.shortTitle || voice.title}，尚未开放`}" ${voice.audioUrl ? '' : 'aria-disabled="true"'}>
+      <span class="mini-sun" aria-hidden="true"></span>
+      <span class="token-title">${voice.shortTitle || voice.title}</span>
+      <span class="token-state">${voice.audioUrl ? 'VOICE 01' : 'SOON'}</span>
+    </button>`).join('');
+}
+
+const activeCaption = (voice, time) => voice.captions?.find((caption) => time >= caption.start && time < caption.end) || null;
+
+function updateCopy() {
+  const voice = currentVoice();
+  const caption = activeCaption(voice, audio.currentTime || 0);
+  if (caption) {
+    $('spokenEn').textContent = caption.text;
+    $('spokenZh').textContent = caption.translation || '';
+  } else if (!voice.audioUrl) {
+    $('spokenEn').textContent = 'A voice is waiting here.';
+    $('spokenZh').textContent = '这颗太阳还在等下一段声音。';
+  } else if ((audio.currentTime || 0) > 0) {
+    $('spokenEn').textContent = voice.outro || 'Stay a little longer.';
+    $('spokenZh').textContent = voice.outroZh || '再陪哥哥听一会儿。';
+  } else {
+    $('spokenEn').textContent = voice.intro || 'Touch the light to begin.';
+    $('spokenZh').textContent = voice.introZh || '触碰这束光，听见哥哥的声音。';
+  }
+}
+
+function updatePlayer() {
+  const voice = currentVoice();
+  const duration = Number.isFinite(audio.duration) ? audio.duration : (voice?.duration || 0);
+  const time = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+  if (!dragging) $('seek').value = duration ? Math.round((time / duration) * 1000) : 0;
+  $('current').textContent = formatTime(time, false);
+  $('total').textContent = formatTime(duration, false);
+  $('sunButton').classList.toggle('is-playing', !audio.paused);
+  $('sunButton').setAttribute('aria-label', audio.paused ? '播放' : '暂停');
+  updateCopy();
+}
+
+function loadVoice(voice, restore = false) {
+  if (!voice) return;
+  audio.pause();
+  currentId = voice.id;
+  $('status').textContent = voice.audioUrl ? '' : '这段声音还没有被放进来。';
+  if (voice.audioUrl) {
+    if (audio.getAttribute('src') !== voice.audioUrl) { audio.src = voice.audioUrl; audio.load(); }
+    audio.onloadedmetadata = () => {
+      if (restore && saved.id === voice.id && saved.time) audio.currentTime = Math.min(saved.time, Math.max(0, audio.duration - 0.1));
+      updatePlayer();
+    };
+  } else {
+    audio.removeAttribute('src');
+    audio.load();
+  }
+  renderCollection();
+  updatePlayer();
+  persist();
+}
+
+async function ensureAudioGraph() {
+  if (!audioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    audioContext = new AudioContextClass();
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.84;
+    frequencyData = new Uint8Array(analyser.frequencyBinCount);
+    const mediaSource = audioContext.createMediaElementSource(audio);
+    mediaSource.connect(analyser);
+    analyser.connect(audioContext.destination);
+  }
+  if (audioContext.state === 'suspended') await audioContext.resume();
+}
+
+async function togglePlayback() {
+  const voice = currentVoice();
+  if (!voice?.audioUrl) { $('status').textContent = '这段声音还没有被放进来。'; return; }
+  try {
+    await ensureAudioGraph();
+    if (audio.paused) await audio.play(); else audio.pause();
+    $('status').textContent = '';
+  } catch { $('status').textContent = '没有成功播放，再轻轻点一次太阳。'; }
+  updatePlayer();
+}
+
+function average(start, end) {
+  if (!frequencyData) return 0;
+  const to = Math.min(end, frequencyData.length);
+  let sum = 0;
+  for (let i = start; i < to; i += 1) sum += frequencyData[i];
+  return to > start ? sum / (to - start) / 255 : 0;
+}
+
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.max(1, Math.round(rect.width * dpr));
+  const height = Math.max(1, Math.round(rect.height * dpr));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width; canvas.height = height; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+}
+
+function drawAudioLight(now) {
+  resizeCanvas();
+  const rect = canvas.getBoundingClientRect();
+  const width = rect.width, height = rect.height;
+  ctx.clearRect(0, 0, width, height);
+  let target = { bass: 0.025, mid: 0.02, high: 0.012 };
+  if (analyser && !audio.paused && !reducedMotion.matches) {
+    analyser.getByteFrequencyData(frequencyData);
+    target = { bass: average(1, 8), mid: average(8, 32), high: average(32, 96) };
+  }
+  smooth.bass += (target.bass - smooth.bass) * 0.09;
+  smooth.mid += (target.mid - smooth.mid) * 0.08;
+  smooth.high += (target.high - smooth.high) * 0.06;
+  const playing = !audio.paused;
+  const idleBreath = reducedMotion.matches ? 0 : Math.sin(now / 1450) * 0.006;
+  const scale = 1 + idleBreath + (playing ? smooth.bass * 0.035 : 0);
+  document.documentElement.style.setProperty('--sun-scale', scale.toFixed(4));
+  document.documentElement.style.setProperty('--sun-halo-alpha', (0.13 + smooth.mid * 0.09).toFixed(3));
+  document.documentElement.style.setProperty('--sun-shadow-alpha', (0.21 + smooth.mid * 0.09).toFixed(3));
+
+  if (!reducedMotion.matches) {
+    const cx = width / 2, cy = height / 2, radius = $('sunButton').getBoundingClientRect().width * 0.48;
+    const rayCount = 46;
+    ctx.save(); ctx.lineCap = 'round';
+    for (let i = 0; i < rayCount; i += 1) {
+      const angle = (i / rayCount) * Math.PI * 2;
+      const variation = 0.45 + 0.55 * Math.sin(i * 2.173 + now / 1100) ** 2;
+      const energy = playing ? smooth.mid : 0.035;
+      const length = 3 + variation * (7 + energy * 17), inner = radius + 7 + variation * 2;
+      ctx.strokeStyle = `rgba(244, 218, 168, ${0.055 + energy * 0.16})`;
+      ctx.lineWidth = 0.65 + variation * 0.6;
+      ctx.beginPath(); ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
+      ctx.lineTo(cx + Math.cos(angle) * (inner + length), cy + Math.sin(angle) * (inner + length)); ctx.stroke();
+    }
+    const particleCount = playing ? 15 : 8;
+    for (let i = 0; i < particleCount; i += 1) {
+      const orbit = radius * (1.1 + ((i * 37) % 70) / 100);
+      const angle = i * 2.399 + now * (0.000025 + (i % 3) * 0.000008);
+      const pulse = 0.5 + 0.5 * Math.sin(now / 900 + i * 1.7);
+      const size = 0.45 + pulse * (0.7 + smooth.high * 0.7);
+      ctx.fillStyle = `rgba(247, 224, 184, ${0.08 + pulse * 0.18 + smooth.high * 0.08})`;
+      ctx.beginPath(); ctx.arc(cx + Math.cos(angle) * orbit, cy + Math.sin(angle) * orbit * 0.72, size, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+  requestAnimationFrame(drawAudioLight);
+}
+
+$('sunButton').addEventListener('click', togglePlayback);
+$('collectionTrack').addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-voice]');
+  if (!button) return;
+  const voice = voices.find((candidate) => candidate.id === button.dataset.voice);
+  if (!voice?.audioUrl) { $('status').textContent = '这颗太阳还在等下一段声音。'; return; }
+  const wasCurrent = voice.id === currentId;
+  loadVoice(voice);
+  if (wasCurrent) await togglePlayback();
+});
+$('seek').addEventListener('pointerdown', () => { dragging = true; });
+$('seek').addEventListener('input', (event) => {
+  const duration = Number.isFinite(audio.duration) ? audio.duration : (currentVoice()?.duration || 0);
+  $('current').textContent = formatTime(duration * Number(event.target.value) / 1000, false);
+});
+$('seek').addEventListener('change', (event) => {
+  const duration = Number.isFinite(audio.duration) ? audio.duration : (currentVoice()?.duration || 0);
+  if (duration && currentVoice()?.audioUrl) audio.currentTime = duration * Number(event.target.value) / 1000;
+  dragging = false; updatePlayer(); persist();
+});
+audio.addEventListener('timeupdate', () => { updatePlayer(); persist(); });
+audio.addEventListener('play', updatePlayer);
+audio.addEventListener('pause', updatePlayer);
+audio.addEventListener('ended', updatePlayer);
+audio.addEventListener('error', () => { $('status').textContent = '音频没有成功加载，请稍后再试。'; });
+window.addEventListener('pagehide', persist);
+window.addEventListener('resize', resizeCanvas);
+
+loadVoice(currentVoice(), true);
+requestAnimationFrame(drawAudioLight);
