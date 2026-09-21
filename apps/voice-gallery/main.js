@@ -297,12 +297,16 @@ function drawAudioLight(now) {
   requestAnimationFrame(drawAudioLight);
 }
 
-$('playButton').addEventListener('click', togglePlayback);
-$('loopButton').addEventListener('click', () => {
+$('playButton').addEventListener('click', async (event) => {
+  await togglePlayback();
+  if (event.detail) event.currentTarget.blur();
+});
+$('loopButton').addEventListener('click', (event) => {
   repeatMode = repeatMode === 'all' ? 'one' : 'all';
   updateRepeatControl(true);
   persist();
   showControls();
+  if (event.detail) event.currentTarget.blur();
 });
 document.querySelector('.voice-archive').addEventListener('pointerdown', (event) => {
   if (event.target.closest('.collection-drawer')) return;
@@ -337,7 +341,7 @@ $('seek').addEventListener('input', (event) => {
 $('seek').addEventListener('change', (event) => {
   const duration = Number.isFinite(audio.duration) ? audio.duration : (currentVoice()?.duration || 0);
   if (duration && currentVoice()?.audioUrl) audio.currentTime = duration * Number(event.target.value) / 1000;
-  dragging = false; updatePlayer(); persist(); showControls();
+  dragging = false; updatePlayer(); persist(); showControls(); event.currentTarget.blur();
 });
 audio.addEventListener('timeupdate', () => { updatePlayer(); persist(); });
 audio.addEventListener('play', () => { updatePlayer(); showControls(); });
