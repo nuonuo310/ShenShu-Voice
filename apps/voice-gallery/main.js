@@ -142,7 +142,6 @@ function updatePlayer() {
   $('playButton').classList.toggle('is-playing', isPlaying);
   document.querySelector('.sun-stage').classList.toggle('is-playing', isPlaying);
   $('playButton').setAttribute('aria-label', audio.paused ? '播放' : '暂停');
-  if (audio.paused) showControls(true);
   updateCopy();
 }
 
