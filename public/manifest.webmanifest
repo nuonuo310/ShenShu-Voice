@@ -1,1 +1,1 @@
-{"name":"沈述声音馆","short_name":"声音馆","start_url":"/","display":"standalone","background_color":"#101719","theme_color":"#101719","icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
+{"name":"沈述声音馆","short_name":"声音馆","start_url":"./","display":"standalone","background_color":"#0d0b09","theme_color":"#0d0b09","icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
