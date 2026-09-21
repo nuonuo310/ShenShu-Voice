@@ -344,7 +344,7 @@ $('seek').addEventListener('change', (event) => {
   dragging = false; updatePlayer(); persist(); showControls(); event.currentTarget.blur();
 });
 audio.addEventListener('timeupdate', () => { updatePlayer(); persist(); });
-audio.addEventListener('play', () => { updatePlayer(); showControls(); });
+audio.addEventListener('play', updatePlayer);
 audio.addEventListener('pause', updatePlayer);
 audio.addEventListener('ended', async () => {
   try { await playFollowingVoice(); } catch { updatePlayer(); }
