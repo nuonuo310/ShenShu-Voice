@@ -11,7 +11,11 @@ app.innerHTML = `
       <p class="archive-count"><span id="availableCount">0</span> SAVED VOICE</p>
     </header>
     <button class="collection-charm" id="collectionCharm" type="button" aria-label="打开我们的收藏" aria-controls="collectionDrawer" aria-expanded="false">
-      <span class="charm-thread" aria-hidden="true"></span><span class="charm-drop" aria-hidden="true"></span>
+      <span class="charm-thread" aria-hidden="true"></span>
+      <svg class="charm-bell" aria-hidden="true" viewBox="0 0 24 28" fill="none">
+        <path d="M6.4 18.2c1-1.15 1.45-2.65 1.45-4.48v-2.55c0-2.52 1.72-4.54 4.15-4.54s4.15 2.02 4.15 4.54v2.55c0 1.83.45 3.33 1.45 4.48"/>
+        <path d="M5.2 19.5h13.6M10.2 22.15c.35.72.95 1.08 1.8 1.08s1.45-.36 1.8-1.08"/>
+      </svg>
     </button>
     <section class="sun-stage" aria-label="声音播放器">
       <div class="ambient-stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
@@ -207,29 +211,31 @@ function drawAudioLight(now) {
     const energy = smooth.bass * 0.65 + smooth.mid * 0.95;
     ctx.save();
     ctx.lineJoin = 'round';
-    for (let ring = 0; ring < 4; ring += 1) {
-      const speed = playing ? 1700 : 5200;
-      const phase = ((now / speed) + ring / 4) % 1;
-      const radius = fieldRadius * (0.24 + phase * 0.76);
-      const fade = Math.sin(Math.PI * phase) * (playing ? 1 : 0.28);
+    for (let ring = 0; ring < 3; ring += 1) {
+      const speed = playing ? 2300 : 6200;
+      const phase = ((now / speed) + ring / 3) % 1;
+      const radius = fieldRadius * (0.28 + phase * 0.72);
+      const fade = Math.sin(Math.PI * phase) * (playing ? 1 : 0.2);
       ctx.beginPath();
       for (let point = 0; point <= 150; point += 1) {
         const ratio = point / 150;
         const angle = ratio * Math.PI * 2;
-        const bin = Math.min(95, Math.floor(ratio * 96));
-        const frequency = frequencyData ? frequencyData[bin] / 255 : 0;
-        const organic = Math.sin(angle * (3 + ring) + now / 1250 + ring) * (0.65 + ring * 0.18);
-        const response = playing ? (frequency - 0.18) * (4.2 + ring * 1.15) : 0;
+        const organic = Math.sin(angle * 2 + now / 1750 + ring) * (0.42 + ring * 0.12);
+        const response = playing ? (
+          Math.sin(angle * 2 + now / 980) * smooth.bass * 2.8 +
+          Math.sin(angle * 3 - now / 1280) * smooth.mid * 2.25 +
+          Math.sin(angle * 5 + now / 1540) * smooth.high * 1.35
+        ) * (0.72 + ring * 0.16) : 0;
         const r = radius + organic + response;
         const x = cx + Math.cos(angle) * r;
         const y = cy + Math.sin(angle) * r * 0.965;
         if (point === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.strokeStyle = `rgba(230, 196, 142, ${0.018 + fade * (0.055 + energy * 0.105)})`;
-      ctx.lineWidth = 0.55 + energy * 0.85;
-      ctx.shadowColor = `rgba(232, 195, 136, ${0.1 + energy * 0.22})`;
-      ctx.shadowBlur = 7 + energy * 14;
+      ctx.strokeStyle = `rgba(230, 196, 142, ${0.006 + fade * (0.025 + energy * 0.045)})`;
+      ctx.lineWidth = 0.42 + energy * 0.38;
+      ctx.shadowColor = `rgba(232, 195, 136, ${0.045 + energy * 0.08})`;
+      ctx.shadowBlur = 9 + energy * 8;
       ctx.stroke();
     }
     ctx.shadowBlur = 0;
