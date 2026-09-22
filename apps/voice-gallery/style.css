@@ -136,3 +136,102 @@ body{background:radial-gradient(circle at 50% 38%,rgba(111,82,46,.075),transpare
 .spoken-en,.spoken-zh{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:normal;text-wrap:pretty}
 .spoken-en{line-height:1.35}
 .spoken-zh{line-height:1.5}
+
+/* Voice archive: approved caption typography and touch-friendly, centered controls.
+   The sun, heading, keepsakes drawer and voice bubble remain untouched. */
+.spoken-copy{
+  min-width:0;width:100%;max-width:100%;box-sizing:border-box;
+  padding-inline:clamp(22px,7vw,36px);
+}
+.spoken-copy .spoken-en,
+.spoken-copy .spoken-zh{
+  width:100%;max-width:350px;margin-inline:auto;
+  white-space:normal;overflow-wrap:anywhere;word-break:normal;
+  font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Noto Sans CJK SC',
+    'Microsoft YaHei','Helvetica Neue',Arial,sans-serif;
+  font-style:normal;font-weight:300;text-align:center;text-wrap:pretty;
+}
+.spoken-copy .spoken-en{
+  font-size:clamp(16px,4.2vw,18px);
+  line-height:1.55;letter-spacing:.035em;
+  color:rgba(249,239,221,.83);
+}
+.spoken-copy .spoken-zh{
+  margin-top:6px;font-size:12px;line-height:1.5;letter-spacing:.035em;
+  color:rgba(242,231,213,.64);
+}
+.spoken-copy .spoken-zh:empty{display:none}
+
+/* Every control shares the playback button's horizontal center line. */
+.timeline{
+  grid-template-columns:50px minmax(0,1fr) 30px 30px;
+  align-items:center;column-gap:9px;
+  width:100%;max-width:420px;margin:28px auto 0;
+  opacity:0;pointer-events:none;
+}
+.timeline.is-visible{opacity:.86;pointer-events:auto}
+.timeline:hover,.timeline:focus-within{opacity:0}
+.timeline.is-visible:hover,.timeline.is-visible:focus-within{opacity:.94}
+.timeline-main{
+  position:relative;display:flex;align-items:center;
+  min-width:0;height:50px;
+}
+.play-control{
+  position:relative;place-self:center;
+  width:50px;height:50px;min-width:50px;min-height:50px;margin:0;
+  border:1px solid rgba(237,216,181,.27);
+  border-radius:50%;background:rgba(235,207,160,.055);
+  -webkit-tap-highlight-color:transparent;
+}
+.play-control span{
+  position:absolute;left:50%;top:50%;
+  width:0;height:0;
+  transform:translate(-36%,-50%);
+  border:0;border-top:7px solid transparent;border-bottom:7px solid transparent;
+  border-left:11px solid rgba(248,230,200,.86);
+}
+.play-control.is-playing span{
+  position:absolute;left:50%;top:50%;
+  width:12px;height:15px;transform:translate(-50%,-50%);
+  border:0;border-left:3px solid rgba(248,230,200,.86);
+  border-right:3px solid rgba(248,230,200,.86);
+}
+.seek{
+  display:block;flex:1;min-width:0;width:100%;height:46px;
+  padding:0;margin:0;appearance:none;-webkit-appearance:none;
+  background:transparent;touch-action:pan-y;
+}
+.seek::-webkit-slider-runnable-track{
+  height:2px;border-radius:2px;
+  background:linear-gradient(90deg,rgba(240,218,181,.72),rgba(235,207,159,.28));
+}
+.seek::-moz-range-track{height:2px;border-radius:2px;background:rgba(235,207,159,.48)}
+.seek::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:12px;height:12px;margin-top:-5px;border:0;border-radius:50%;
+  background:#e9cfaa;box-shadow:0 0 9px rgba(235,202,145,.34);
+}
+.seek::-moz-range-thumb{
+  width:12px;height:12px;border:0;border-radius:50%;
+  background:#e9cfaa;box-shadow:0 0 9px rgba(235,202,145,.34);
+}
+.time-row{
+  position:absolute;top:calc(50% + 10px);left:0;right:0;
+  display:flex;justify-content:flex-end;
+  color:rgba(241,225,201,.58);font-size:10px;line-height:1;
+  pointer-events:none;
+}
+.loop-control{place-self:center;width:30px;height:30px}
+.favorite-control,
+.favorite-control.is-saved{
+  place-self:center;display:grid;place-items:center;
+  width:30px;height:40px;margin:0;padding:0;
+  border:0;border-radius:0;background:transparent;
+}
+.favorite-control .favorite-star{
+  width:19px;height:19px; /* The approved original four-point star size. */
+}
+@media(max-width:390px){
+  .timeline{width:100%;grid-template-columns:50px minmax(0,1fr) 27px 27px;column-gap:7px}
+  .spoken-copy .spoken-en{font-size:16px}
+}
