@@ -93,3 +93,6 @@ body{background:radial-gradient(circle at 50% 38%,rgba(111,82,46,.075),transpare
 .timeline:hover,.timeline:focus-within{opacity:0}
 .timeline.is-visible{opacity:.62;pointer-events:auto}
 @media(hover:hover){.timeline.is-visible:hover{opacity:.72}}
+
+/* Audio-reactive sun experiment: canvas owns the light; hide the former static core. */
+.sun-stage .sound-core{display:none}
