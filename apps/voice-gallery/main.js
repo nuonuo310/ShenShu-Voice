@@ -3,7 +3,7 @@ import './style.css';
 import { importLocalAudio, listLocalAudio, getLocalAudio, saveLocalAudio } from '../../packages/voice-data/local-audio.js';
 
 const STORAGE_KEY = 'shenshu:sun-player';
-const TRANSCRIBE_URL = import.meta.env.VITE_TRANSCRIBE_URL || '';
+const TRANSCRIBE_URL = import.meta.env.VITE_TRANSCRIBE_URL || 'https://shenshu-voice-captions.tnuonuo310.workers.dev/';
 const FAVORITES_INITIALIZED = 'shenshu:gallery-favorites-initialized';
 const app = document.querySelector('#app');
 
@@ -432,7 +432,7 @@ $('collectionTrack').addEventListener('click', async (event) => {
     try{
       const record=await getLocalAudio(id);
       if(!record?.blob)throw Error('本机音频不存在');
-      if(record.blob.size>25*1024*1024)throw Error('转写服务暂支持 25 MB 以内的音频');
+      if(record.blob.size>10*1024*1024)throw Error('转写服务暂支持 10 MB 以内的音频');
       const form=new FormData();
       form.set('file',record.blob,record.blob.name||'recording.mp3');
       const response=await fetch(TRANSCRIBE_URL,{method:'POST',body:form});
