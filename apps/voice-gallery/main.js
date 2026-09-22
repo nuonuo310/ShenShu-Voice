@@ -59,6 +59,7 @@ let dragging = false;
 let audioContext = null;
 let analyser = null;
 let frequencyData = null;
+let waveformData = null;
 let smooth = { bass: 0, mid: 0, high: 0 };
 let shownCaption = '';
 let repeatMode = 'sequence';
@@ -174,8 +175,9 @@ async function ensureAudioGraph() {
     audioContext = new AudioContextClass();
     analyser = audioContext.createAnalyser();
     analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.84;
+    analyser.smoothingTimeConstant = 0.48;
     frequencyData = new Uint8Array(analyser.frequencyBinCount);
+    waveformData = new Uint8Array(analyser.fftSize);
     const mediaSource = audioContext.createMediaElementSource(audio);
     mediaSource.connect(analyser);
     analyser.connect(audioContext.destination);
@@ -236,12 +238,15 @@ function resizeCanvas() {
 }
 
 // Soft daylight-readable sun: the audio envelope drives light and outward travelling ripples.
+// One reusable audio envelope for every recording; no clip-specific timestamps or gains.
 let lightLevel = 0;
-let previousEnergy = 0;
-let envelopeFloor = 0;
-let envelopeCeiling = 0.18;
+let vocalLevel = 0;
+let recentPeak = 0.018;
+let noiseFloor = 0.002;
+let previousVocalLevel = 0;
 let lastFrame = 0;
 let lastRipple = -1000;
+let wasSpeaking = false;
 const ripples = [];
 function drawAudioLight(now) {
   resizeCanvas();
@@ -252,28 +257,31 @@ function drawAudioLight(now) {
   const dt = Math.min(0.05, Math.max(0.001, (now - (lastFrame || now - 16)) / 1000));
   lastFrame = now;
   const active = !audio.paused && !audio.ended && !reducedMotion.matches;
-  let target = { bass: 0, mid: 0, high: 0 };
-  if (active && analyser && frequencyData) {
-    analyser.getByteFrequencyData(frequencyData);
-    target = { bass: average(1, 8), mid: average(8, 32), high: average(32, 96) };
-  }
   const follow = (previous, next, attack, release) =>
     previous + (next - previous) * (1 - Math.exp(-dt / (next > previous ? attack : release)));
-  smooth.bass = follow(smooth.bass, target.bass, 0.04, 0.12);
-  smooth.mid = follow(smooth.mid, target.mid, 0.035, 0.11);
-  smooth.high = follow(smooth.high, target.high, 0.03, 0.1);
-  const rawEnergy = active ? Math.min(1, smooth.bass * 0.35 + smooth.mid * 0.95 + smooth.high * 0.22) : 0;
-  // Track the local vocal dynamic range so quiet recordings still visibly open and close.
-  envelopeFloor = follow(envelopeFloor, rawEnergy, 1.6, 0.32);
-  envelopeCeiling = follow(envelopeCeiling, rawEnergy, 0.16, 2.1);
-  const dynamicRange = Math.max(0.12, envelopeCeiling - envelopeFloor);
-  const voiceEnergy = active ? Math.min(1, Math.max(0, (rawEnergy - envelopeFloor * 0.68) / dynamicRange)) : 0;
-  const breathTarget = active ? Math.min(1, voiceEnergy * 0.9) : 0;
-  lightLevel = follow(lightLevel, breathTarget, 0.07, 0.19);
+  let rms = 0;
+  if (active && analyser && waveformData && audioContext?.state === 'running') {
+    analyser.getByteTimeDomainData(waveformData);
+    let power = 0;
+    for (let i = 0; i < waveformData.length; i++) {
+      const sample = (waveformData[i] - 128) / 128;
+      power += sample * sample;
+    }
+    rms = Math.sqrt(power / waveformData.length);
+  }
+  // Fast onset / slower decay preserves syllables, while the peak adapts to quiet and loud clips.
+  noiseFloor = follow(noiseFloor, rms, 4, 1.1);
+  const signal = active ? Math.max(0, rms - Math.max(0.002, noiseFloor * 1.45)) : 0;
+  recentPeak = follow(recentPeak, Math.max(0.012, signal), 0.07, 2.8);
+  const normalized = Math.min(1, signal / Math.max(0.012, recentPeak * 0.88));
+  vocalLevel = follow(vocalLevel, normalized, 0.035, 0.105);
+  const speaking = active && signal > Math.max(0.003, recentPeak * 0.12);
+  const breathTarget = speaking ? Math.min(1, vocalLevel) : 0;
+  lightLevel = follow(lightLevel, breathTarget, 0.075, 0.16);
   const cx = width / 2, cy = height / 2;
   const size = Math.min(width, height);
-  // Preserve the approved palette; the entire continuous gradient breathes together.
-  const outerRadius = size * 0.285 * (1 + lightLevel * 0.53);
+  // The entire approved ivory / champagne / peach gradient changes radius together.
+  const outerRadius = size * 0.275 * (1 + lightLevel * 0.57);
   const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerRadius * 1.19);
   glow.addColorStop(0, 'rgba(255,248,224,0.95)');
   glow.addColorStop(0.10, 'rgba(255,244,215,0.94)');
@@ -286,22 +294,24 @@ function drawAudioLight(now) {
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, height);
   if (!reducedMotion.matches) {
-    // A new vocal onset releases a wave at the CURRENT halo edge. Older waves
-    // travel independently, so two or three expanding rings can overlap briefly.
-    const onset = voiceEnergy - previousEnergy;
-    if (active && voiceEnergy > 0.16 && onset > 0.085 && now - lastRipple > 190) {
-      ripples.push({ radius: outerRadius * 1.19, opacity: Math.min(1, 0.55 + voiceEnergy * 0.4), age: 0 });
-      if (ripples.length > 5) ripples.shift();
+    const onset = vocalLevel - previousVocalLevel;
+    // A fresh syllable after a valley OR a meaningful rise can launch a new wave.
+    if (speaking && now - lastRipple > 230 &&
+        ((!wasSpeaking && vocalLevel > 0.14) ||
+         (onset > 0.055 && vocalLevel > 0.23))) {
+      ripples.push({ radius: outerRadius * 1.19, opacity: 0.55 + vocalLevel * 0.35, age: 0 });
+      if (ripples.length > 4) ripples.shift();
       lastRipple = now;
     }
-    previousEnergy = voiceEnergy;
-    const maxRadius = size * 0.51;
+    previousVocalLevel = vocalLevel;
+    wasSpeaking = speaking;
+    const maxRadius = size * 0.53;
     for (let n = ripples.length - 1; n >= 0; n--) {
       const ripple = ripples[n];
       ripple.age += dt;
       ripple.radius += dt * size * 0.16;
-      const life = Math.max(0, 1 - ripple.age / 1.25);
-      const edgeFade = Math.max(0, Math.min(1, (maxRadius - ripple.radius) / (size * 0.1)));
+      const life = Math.max(0, 1 - ripple.age / 1.35);
+      const edgeFade = Math.max(0, Math.min(1, (maxRadius - ripple.radius) / (size * 0.08)));
       if (life <= 0 || edgeFade <= 0) {
         ripples.splice(n, 1);
         continue;
@@ -324,7 +334,8 @@ function drawAudioLight(now) {
     ctx.shadowBlur = 0;
   } else {
     ripples.length = 0;
-    previousEnergy = 0;
+    previousVocalLevel = 0;
+    wasSpeaking = false;
   }
   requestAnimationFrame(drawAudioLight);
 }
