@@ -59,9 +59,18 @@ const ctx = canvas.getContext('2d');
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const available = voices.filter((voice) => voice.audioUrl);
 const localUrls = new Map();
+const EDIT_KEY = 'shenshu:voice-title-overrides';
+function readVoiceEdits() {
+  try {
+    const data = JSON.parse(localStorage.getItem(EDIT_KEY) || '{}');
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  } catch { return {}; }
+}
+const voiceEdits = readVoiceEdits();
+const displayVoice = voice => ({...voice, title: voiceEdits[voice.id]?.title || voice.title, notes: voiceEdits[voice.id]?.notes ?? voice.notes ?? ''});
 let localRecords = [];
 let editingId = null;
-const playable = () => [...available, ...localRecords];
+const playable = () => [...available, ...localRecords].map(displayVoice);
 async function loadLocalRecords(){try{localRecords=(await listLocalAudio()).map(record=>({...record,audioUrl:localUrls.get(record.id)||URL.createObjectURL(record.blob)}));localRecords.forEach(record=>localUrls.set(record.id,record.audioUrl));renderCollection();}catch{$('importStatus').textContent='无法读取本机音频，请检查浏览器存储权限。';}}
 // Preserve the original single keepsake on first upgrade; afterwards respect explicit removals.
 try {
@@ -107,7 +116,7 @@ function renderCollection() {
         <span class="voice-meta"><span class="voice-title"></span><span class="voice-date"></span></span>
         <span class="voice-duration">${formatTime(voice.duration, false)}</span>
       </button>
-      ${voice.id.startsWith("local-") ? `<button class="voice-edit" type="button" data-edit="${voice.id}" aria-label="编辑声音名称">编辑</button>` : ""}
+      <button class="voice-edit" type="button" data-edit="${voice.id}" aria-label="编辑声音名称与备注" title="编辑名称与备注"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 20h4l11-11-4-4L4 16v4Zm9-13 4 4"/></svg></button>
       <button class="voice-remove" type="button" data-remove="${voice.id}" aria-label="取消收藏${voice.title}" title="取消收藏"><svg class="favorite-star" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M32 5 C35 22 42 29 59 32 C42 35 35 42 32 59 C29 42 22 35 5 32 C22 29 29 22 32 5Z"/></svg></button>
     </div>`).join('') : '<p class="collection-empty">还没有收藏的声音。<br>播放一段声音，点下方星芒就能收进这里。</p>';
   items.forEach((voice, index) => {
@@ -413,7 +422,7 @@ $('favoriteButton').addEventListener('click', () => {
 $('collectionTrack').addEventListener('click', async (event) => {
   const edit = event.target.closest('[data-edit]');
   if(edit){
-    const record=localRecords.find(item=>item.id===edit.dataset.edit);
+    const record=playable().find(item=>item.id===edit.dataset.edit);
     if(!record)return;
     editingId=record.id;
     $('editTitle').value=record.title;
@@ -481,13 +490,16 @@ $('editForm').addEventListener('submit',async event=>{
  event.preventDefault();
  if(!editingId)return;
  try{
-  const record=await getLocalAudio(editingId);
+  const record=playable().find(item=>item.id===editingId);
   if(!record)throw Error('找不到这段声音');
   const title=$('editTitle').value.trim();
   if(!title)throw Error('请输入声音名称');
-  await saveLocalAudio({...record,title,notes:$('editNotes').value.trim()});
+  const notes=$('editNotes').value.trim();
+  const next={...voiceEdits,[editingId]:{title,notes}};
+  localStorage.setItem(EDIT_KEY,JSON.stringify(next));
+  Object.assign(voiceEdits,next);
   $('editForm').hidden=true;editingId=null;
-  await loadLocalRecords();
+  renderCollection();
   $('importStatus').textContent='名称已修改，音频和收藏保持不变。';
  }catch(error){$('importStatus').textContent=error.message||'保存失败';}
 });
