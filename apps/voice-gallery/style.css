@@ -130,3 +130,9 @@ body{background:radial-gradient(circle at 50% 38%,rgba(111,82,46,.075),transpare
 
 /* Quiet edit affordance beside duration, shared by imported and bubble-saved voices. */
 .voice-edit{display:grid;place-items:center;flex:0 0 24px;width:24px;height:32px;padding:4px;border:0;border-radius:7px;background:transparent;color:rgba(239,222,195,.55);cursor:pointer;-webkit-tap-highlight-color:transparent}.voice-edit svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}.voice-edit:active{background:rgba(239,222,195,.1);color:#f0ddb6}.voice-row{gap:5px}.voice-row-play{gap:9px}.voice-remove{flex-basis:29px;width:29px}.voice-meta{min-width:0}.voice-title{overflow-wrap:anywhere}
+
+/* Auto-caption readability only; keep the approved typography, color and stage intact. */
+.spoken-copy{min-width:0;width:100%;max-width:100%;box-sizing:border-box;padding-inline:clamp(18px,6vw,32px)}
+.spoken-en,.spoken-zh{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:normal;text-wrap:pretty}
+.spoken-en{line-height:1.35}
+.spoken-zh{line-height:1.5}
