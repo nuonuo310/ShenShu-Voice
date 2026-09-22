@@ -71,7 +71,9 @@ const displayVoice = voice => ({...voice, title: voiceEdits[voice.id]?.title || 
 let localRecords = [];
 let editingId = null;
 const playable = () => [...available, ...localRecords].map(displayVoice);
-async function loadLocalRecords(){try{localRecords=(await listLocalAudio()).map(record=>({...record,audioUrl:localUrls.get(record.id)||URL.createObjectURL(record.blob)}));localRecords.forEach(record=>localUrls.set(record.id,record.audioUrl));renderCollection();}catch{$('importStatus').textContent='无法读取本机音频，请检查浏览器存储权限。';}}
+const normalizedCaptions = cues => Array.isArray(cues) ? cues.filter(c => Number.isFinite(c.start) && Number.isFinite(c.end) && c.end > c.start && typeof c.text === 'string' && c.text.trim()).map(c => ({start:c.start,end:c.end,text:c.text.trim(),translation:typeof c.translation==='string'?c.translation:''})).sort((a,b)=>a.start-b.start) : [];
+
+async function loadLocalRecords(){try{localRecords=(await listLocalAudio()).map(record=>({...record,captions:normalizedCaptions(record.captions),audioUrl:localUrls.get(record.id)||URL.createObjectURL(record.blob)}));localRecords.forEach(record=>localUrls.set(record.id,record.audioUrl));renderCollection();}catch{$('importStatus').textContent='无法读取本机音频，请检查浏览器存储权限。';}}
 // Preserve the original single keepsake on first upgrade; afterwards respect explicit removals.
 try {
   if (!localStorage.getItem(FAVORITES_INITIALIZED)) {
@@ -159,7 +161,7 @@ function showControls(hold = false) {
 function updateCopy() {
   const voice = currentVoice();
   const caption = activeCaption(voice, audio.currentTime || 0);
-  const nextKey = caption ? `${caption.start}:${caption.text}` : '';
+  const nextKey = `${voice.id}:${caption ? `${caption.start}:${caption.text}` : ''}`;
   if (nextKey === shownCaption) return;
   shownCaption = nextKey;
   const copy = document.querySelector('.spoken-copy');
