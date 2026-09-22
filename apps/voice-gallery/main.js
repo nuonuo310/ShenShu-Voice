@@ -33,7 +33,7 @@ app.innerHTML = `
       <button class="play-control" id="playButton" type="button" aria-label="播放"><span aria-hidden="true"></span></button>
       <div class="timeline-main">
         <input id="seek" class="seek" type="range" min="0" max="1000" value="0" aria-label="播放进度">
-        <div class="time-row"><span id="current">0:00</span><span id="total">0:00</span></div>
+        <div class="time-row"><span id="total">0:00</span></div>
       </div>
       <button class="loop-control" id="loopButton" type="button" aria-label="列表循环">
         <span class="loop-glyph" aria-hidden="true">↻</span><span class="loop-one" aria-hidden="true">1</span>
@@ -83,7 +83,7 @@ function readableCaptions(cues) {
     const text=cue.text.trim();
     if (!text) continue;
     const isCjk=/[\u3400-\u9fff]/.test(text);
-    const max=isCjk?30:85;
+    const max=isCjk?28:58;
     if (Array.from(text).length<=max) {output.push(cue);continue;}
     const sentences=text.match(/[^。！？!?；;]+[。！？!?；;]*|[^。！？!?；;]+$/gu)||[text];
     const pieces=[];
@@ -183,10 +183,17 @@ function renderCollection() {
 
 const captionCache = new WeakMap();
 const activeCaption = (voice, time) => {
-  if(!voice.captions?.length)return null;
+  if (!voice.captions?.length) return null;
   let cues=captionCache.get(voice.captions);
-  if(!cues){cues=readableCaptions(voice.captions);captionCache.set(voice.captions,cues);}
-  return cues.find(caption=>time>=Math.max(0,caption.start-0.08)&&time<caption.end)||null;
+  if (!cues) { cues=readableCaptions(voice.captions); captionCache.set(voice.captions,cues); }
+  // Show the upcoming phrase shortly before its estimated split boundary.
+  // Keep the original provider timestamps and local caption data unchanged.
+  const anticipated = time + (audio.paused ? 0 : 0.28);
+  for (let i=cues.length-1;i>=0;i--) {
+    const cue=cues[i];
+    if (anticipated>=Math.max(0,cue.start) && time<cue.end) return cue;
+  }
+  return null;
 };
 
 function updateRepeatControl(announce = false) {
@@ -241,7 +248,6 @@ function updatePlayer() {
   const duration = Number.isFinite(audio.duration) ? audio.duration : (voice?.duration || 0);
   const time = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
   if (!dragging) $('seek').value = duration ? Math.round((time / duration) * 1000) : 0;
-  $('current').textContent = formatTime(time, false);
   $('total').textContent = formatTime(duration, false);
   const isPlaying = !audio.paused;
   $('playButton').classList.toggle('is-playing', isPlaying);
@@ -441,6 +447,9 @@ function drawAudioLight(now) {
     previousVocalLevel = 0;
     wasSpeaking = false;
   }
+  // The media timeupdate event can fire only a few times per second. Keeping
+  // subtitle selection in the existing animation loop avoids late switches.
+  if (!audio.paused && currentVoice()?.captions?.length) updateCopy();
   requestAnimationFrame(drawAudioLight);
 }
 
@@ -534,7 +543,7 @@ $('collectionTrack').addEventListener('click', async (event) => {
 $('seek').addEventListener('pointerdown', () => { dragging = true; showControls(true); });
 $('seek').addEventListener('input', (event) => {
   const duration = Number.isFinite(audio.duration) ? audio.duration : (currentVoice()?.duration || 0);
-  $('current').textContent = formatTime(duration * Number(event.target.value) / 1000, false);
+  $('seek').setAttribute('aria-valuetext', formatTime(duration * Number(event.target.value) / 1000, false));
 });
 $('seek').addEventListener('change', (event) => {
   const duration = Number.isFinite(audio.duration) ? audio.duration : (currentVoice()?.duration || 0);
