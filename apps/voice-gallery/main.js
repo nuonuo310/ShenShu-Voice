@@ -3,6 +3,7 @@ import './style.css';
 import { importLocalAudio, listLocalAudio, getLocalAudio, saveLocalAudio } from '../../packages/voice-data/local-audio.js';
 
 const STORAGE_KEY = 'shenshu:sun-player';
+const TRANSCRIBE_URL = import.meta.env.VITE_TRANSCRIBE_URL || '';
 const FAVORITES_INITIALIZED = 'shenshu:gallery-favorites-initialized';
 const app = document.querySelector('#app');
 
@@ -44,7 +45,7 @@ app.innerHTML = `
       <button class="collection-backdrop" id="collectionBackdrop" type="button" aria-label="关闭收藏"></button>
       <div class="collection-panel">
         <div class="collection-topline"><div><p>VOICE KEEPSAKES</p><h1 id="collectionTitle">我们的收藏 <span id="collectionCount">01</span></h1></div><button class="collection-close" id="collectionClose" type="button" aria-label="关闭收藏">×</button></div>
-        <div class="collection-track" id="collectionTrack"></div><div class="import-area"><button id="importOpen" class="import-open" type="button">＋ 导入声音</button><p class="import-note">当前仅保存在这台设备的浏览器中，尚未云端备份或开放给哥哥读取。</p><form id="importForm" hidden><input id="importFile" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac" required><input id="importTitle" type="text" maxlength="80" placeholder="声音名称"><input id="importNotes" type="text" maxlength="200" placeholder="备注（可选）"><button type="submit">保存到本机收藏</button></form><p id="importStatus" role="status"></p><form id="editForm" hidden><label for="editTitle">修改声音名称</label><input id="editTitle" maxlength="80" required><label for="editNotes">备注</label><input id="editNotes" maxlength="200"><button type="submit">保存修改</button><button id="editCancel" type="button">取消</button></form></div>
+        <div class="collection-track" id="collectionTrack"></div><div class="import-area"><button id="importOpen" class="import-open" type="button">＋ 导入声音</button><p class="import-note">当前仅保存在这台设备的浏览器中，尚未云端备份或开放给哥哥读取。</p><form id="importForm" hidden><input id="importFile" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac" required><input id="importTitle" type="text" maxlength="80" placeholder="声音名称"><input id="importNotes" type="text" maxlength="200" placeholder="备注（可选）"><button type="submit">保存到本机收藏</button></form><p id="importStatus" role="status"></p><p id="captionStatus" role="status"></p><form id="editForm" hidden><label for="editTitle">修改声音名称</label><input id="editTitle" maxlength="80" required><label for="editNotes">备注</label><input id="editNotes" maxlength="200"><button type="submit">保存修改</button><button id="editCancel" type="button">取消</button></form></div>
         <p class="collection-hint">点播放聆听 · 点星芒取消收藏</p>
       </div>
     </section>
@@ -118,6 +119,7 @@ function renderCollection() {
         <span class="voice-meta"><span class="voice-title"></span><span class="voice-date"></span></span>
         <span class="voice-duration">${formatTime(voice.duration, false)}</span>
       </button>
+      ${voice.id.startsWith('local-') && TRANSCRIBE_URL && !voice.captions?.length ? `<button class="voice-transcribe" type="button" data-transcribe="${voice.id}" aria-label="自动生成字幕">生成字幕</button>` : ''}
       <button class="voice-edit" type="button" data-edit="${voice.id}" aria-label="编辑声音名称与备注" title="编辑名称与备注"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 20h4l11-11-4-4L4 16v4Zm9-13 4 4"/></svg></button>
       <button class="voice-remove" type="button" data-remove="${voice.id}" aria-label="取消收藏${voice.title}" title="取消收藏"><svg class="favorite-star" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M32 5 C35 22 42 29 59 32 C42 35 35 42 32 59 C29 42 22 35 5 32 C22 29 29 22 32 5Z"/></svg></button>
     </div>`).join('') : '<p class="collection-empty">还没有收藏的声音。<br>播放一段声音，点下方星芒就能收进这里。</p>';
@@ -422,6 +424,29 @@ $('favoriteButton').addEventListener('click', () => {
   catch { $('status').textContent = '收藏保存失败，请检查浏览器存储设置。'; }
 });
 $('collectionTrack').addEventListener('click', async (event) => {
+  const transcribe = event.target.closest('[data-transcribe]');
+  if(transcribe){
+    const id=transcribe.dataset.transcribe;
+    transcribe.disabled=true;
+    $('captionStatus').textContent='正在识别语音，请保持页面打开…';
+    try{
+      const record=await getLocalAudio(id);
+      if(!record?.blob)throw Error('本机音频不存在');
+      if(record.blob.size>25*1024*1024)throw Error('转写服务暂支持 25 MB 以内的音频');
+      const form=new FormData();
+      form.set('file',record.blob,record.blob.name||'recording.mp3');
+      const response=await fetch(TRANSCRIBE_URL,{method:'POST',body:form});
+      const result=await response.json();
+      if(!response.ok)throw Error(result.error||'语音识别失败');
+      const captions=normalizedCaptions(result.captions);
+      if(!captions.length)throw Error('没有识别到可用字幕');
+      await saveLocalAudio({...record,captions});
+      await loadLocalRecords();
+      shownCaption=null;updateCopy();
+      $('captionStatus').textContent='字幕已保存，播放时会自动同步显示。';
+    }catch(error){$('captionStatus').textContent=error?.message||'字幕生成失败';transcribe.disabled=false;}
+    return;
+  }
   const edit = event.target.closest('[data-edit]');
   if(edit){
     const record=playable().find(item=>item.id===edit.dataset.edit);
@@ -483,7 +508,7 @@ $('importForm').addEventListener('submit',async event=>{
     toggleFavorite(record.id);
     renderCollection();
     $('importForm').reset();$('importForm').hidden=true;
-    $('importStatus').textContent='已保存到本机收藏。请保留原始音频文件，当前尚未云端备份。';
+    $('importStatus').textContent='已保存到本机收藏。请保留原始音频文件，当前尚未云端备份。'+(TRANSCRIBE_URL?' 可点击「生成字幕」自动识别。':' 字幕服务尚未配置。');
   }catch(error){$('importStatus').textContent=error?.message||'导入失败，请检查本机存储空间。';}
   finally{submit.disabled=false;}
 });
