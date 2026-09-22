@@ -1,7 +1,8 @@
-import { voices, formatTime } from '../../packages/voice-data/index.js';
+import { voices, formatTime, getFavorites, toggleFavorite } from '../../packages/voice-data/index.js';
 import './style.css';
 
 const STORAGE_KEY = 'shenshu:sun-player';
+const FAVORITES_INITIALIZED = 'shenshu:gallery-favorites-initialized';
 const app = document.querySelector('#app');
 
 app.innerHTML = `
@@ -35,6 +36,7 @@ app.innerHTML = `
       <button class="loop-control" id="loopButton" type="button" aria-label="列表循环">
         <span class="loop-glyph" aria-hidden="true">↻</span><span class="loop-one" aria-hidden="true">1</span>
       </button>
+      <button class="favorite-control" id="favoriteButton" type="button" aria-label="收藏当前声音" aria-pressed="false">♧</button>
       <p class="status" id="status" role="status"></p>
     </section>
     <section class="collection-drawer" id="collectionDrawer" aria-labelledby="collectionTitle" hidden>
@@ -42,6 +44,7 @@ app.innerHTML = `
       <div class="collection-panel">
         <div class="collection-topline"><div><p>VOICE KEEPSAKES</p><h1 id="collectionTitle">我们的收藏 <span id="collectionCount">01</span></h1></div><button class="collection-close" id="collectionClose" type="button" aria-label="关闭收藏">×</button></div>
         <div class="collection-track" id="collectionTrack"></div>
+        <p class="collection-hint">点播放聆听 · 点书签取消收藏</p>
       </div>
     </section>
   </main>
@@ -54,6 +57,14 @@ const canvas = $('audioCanvas');
 const ctx = canvas.getContext('2d');
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const available = voices.filter((voice) => voice.audioUrl);
+// Preserve the original single keepsake on first upgrade; afterwards respect explicit removals.
+try {
+  if (!localStorage.getItem(FAVORITES_INITIALIZED)) {
+    if (!getFavorites().length && available[0]) toggleFavorite(available[0].id);
+    localStorage.setItem(FAVORITES_INITIALIZED, '1');
+  }
+} catch { /* Playback still works when storage is blocked. */ }
+const favorites = () => { try { return new Set(getFavorites()); } catch { return new Set(); } };
 let currentId = available[0]?.id ?? voices[0]?.id ?? null;
 let dragging = false;
 let audioContext = null;
@@ -79,14 +90,27 @@ function persist() {
 }
 
 function renderCollection() {
+  const ids = favorites();
+  const items = available.filter((voice) => ids.has(voice.id));
   $('availableCount').textContent = available.length;
-  $('collectionCount').textContent = String(available.length).padStart(2, '0');
-  $('collectionTrack').innerHTML = available.map((voice, index) => `
-    <button class="voice-row ${voice.id === currentId ? 'is-active' : ''}" type="button" data-voice="${voice.id}" aria-label="播放${voice.title}">
-      <span class="voice-number">${String(index + 1).padStart(2, '0')}</span>
-      <span class="voice-meta"><span class="voice-title">${voice.title}</span><span class="voice-date">${voice.date}</span></span>
-      <span class="voice-duration">${formatTime(voice.duration, false)}</span>
-    </button>`).join('');
+  $('collectionCount').textContent = String(items.length).padStart(2, '0');
+  $('collectionTrack').innerHTML = items.length ? items.map((voice) => `
+    <div class="voice-row ${voice.id === currentId ? 'is-active' : ''}">
+      <button class="voice-row-play" type="button" data-voice="${voice.id}" aria-label="播放${voice.title}">
+        <span class="voice-play-icon" aria-hidden="true">${voice.id === currentId && !audio.paused ? 'Ⅱ' : '▶'}</span>
+        <span class="voice-meta"><span class="voice-title"></span><span class="voice-date"></span></span>
+        <span class="voice-duration">${formatTime(voice.duration, false)}</span>
+      </button>
+      <button class="voice-remove" type="button" data-remove="${voice.id}" aria-label="取消收藏${voice.title}" title="取消收藏">♧</button>
+    </div>`).join('') : '<p class="collection-empty">还没有收藏的声音。<br>播放一段声音，点下方书签就能收进这里。</p>';
+  items.forEach((voice, index) => {
+    const row = $('collectionTrack').children[index];
+    row.querySelector('.voice-title').textContent = voice.title;
+    row.querySelector('.voice-date').textContent = voice.date || '';
+  });
+  $('favoriteButton').classList.toggle('is-saved', ids.has(currentId));
+  $('favoriteButton').setAttribute('aria-label', ids.has(currentId) ? '取消收藏当前声音' : '收藏当前声音');
+  $('favoriteButton').setAttribute('aria-pressed', String(ids.has(currentId)));
 }
 
 const activeCaption = (voice, time) => voice.captions?.find((caption) => time >= Math.max(0, caption.start - 0.08) && time < caption.end) || null;
@@ -150,6 +174,7 @@ function updatePlayer() {
   document.querySelector('.sun-stage').classList.toggle('is-playing', isPlaying);
   $('playButton').setAttribute('aria-label', audio.paused ? '播放' : '暂停');
   updateCopy();
+  if (!$('collectionDrawer').hidden) renderCollection();
 }
 
 function loadVoice(voice, restore = false) {
@@ -373,14 +398,30 @@ function closeCollection() {
 }
 $('collectionClose').addEventListener('click', closeCollection);
 $('collectionBackdrop').addEventListener('click', closeCollection);
+$('favoriteButton').addEventListener('click', () => {
+  if (!currentVoice()?.audioUrl) return;
+  try { toggleFavorite(currentId); renderCollection(); }
+  catch { $('status').textContent = '收藏保存失败，请检查浏览器存储设置。'; }
+});
 $('collectionTrack').addEventListener('click', async (event) => {
+  const remove = event.target.closest('[data-remove]');
+  if (remove) {
+    try { toggleFavorite(remove.dataset.remove); renderCollection(); }
+    catch { $('status').textContent = '取消收藏失败，请稍后再试。'; }
+    return;
+  }
   const button = event.target.closest('[data-voice]');
   if (!button) return;
   const voice = voices.find((candidate) => candidate.id === button.dataset.voice);
-  if (!voice?.audioUrl) { $('status').textContent = '这颗太阳还在等下一段声音。'; return; }
-  const wasCurrent = voice.id === currentId;
-  loadVoice(voice);
-  if (wasCurrent) await togglePlayback();
+  if (!voice?.audioUrl) return;
+  closeCollection();
+  if (voice.id !== currentId) loadVoice(voice);
+  try {
+    await ensureAudioGraph();
+    if (audio.paused) await audio.play();
+    updatePlayer();
+    showControls();
+  } catch { $('status').textContent = '播放失败，请再点一次播放键。'; }
 });
 $('seek').addEventListener('pointerdown', () => { dragging = true; showControls(true); });
 $('seek').addEventListener('input', (event) => {
