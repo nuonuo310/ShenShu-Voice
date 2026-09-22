@@ -96,3 +96,21 @@ body{background:radial-gradient(circle at 50% 38%,rgba(111,82,46,.075),transpare
 
 /* Audio-reactive sun experiment: canvas owns the light; hide the former static core. */
 .sun-stage .sound-core{display:none}
+
+/* Final polish: readable captions, quiet silver stars and a subtle header. */
+.archive-kicker{color:rgba(244,227,202,.47)}
+.archive-count{color:rgba(240,221,190,.26)}
+.collection-charm{opacity:.52}
+.charm-thread{background:linear-gradient(180deg,transparent,rgba(227,195,144,.34))}
+.charm-bell{stroke:rgba(235,207,165,.65)}
+.spoken-en{color:rgba(249,239,221,.83)}
+.spoken-zh{color:rgba(242,231,213,.64);font-size:11px;font-weight:300;letter-spacing:.09em}
+.ambient-stars i{width:2px;height:2px;background:rgba(240,246,253,.94);box-shadow:0 0 7px rgba(225,237,250,.62),0 0 13px rgba(225,237,250,.19)}
+.ambient-stars i:nth-child(9){left:5%;top:56%;opacity:.35;transform:scale(.7)}
+.ambient-stars i:nth-child(10){left:42%;top:8%;opacity:.4;transform:scale(.75)}
+.ambient-stars i:nth-child(11){left:95%;top:30%;opacity:.42;transform:scale(.9)}
+.ambient-stars i:nth-child(12){left:8%;top:81%;opacity:.28;transform:scale(.65)}
+.ambient-stars i:nth-child(13){left:94%;top:83%;opacity:.3;transform:scale(.65)}
+.ambient-stars i:nth-child(14){left:57%;top:94%;opacity:.23;transform:scale(.6)}
+.ambient-stars i:nth-child(15){left:3%;top:12%;opacity:.22;transform:scale(.6)}
+.ambient-stars i:nth-child(16){left:97%;top:68%;opacity:.31;transform:scale(.7)}
