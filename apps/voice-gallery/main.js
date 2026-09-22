@@ -74,6 +74,54 @@ let editingId = null;
 const playable = () => [...available, ...localRecords].map(displayVoice);
 const normalizedCaptions = cues => Array.isArray(cues) ? cues.filter(c => Number.isFinite(c.start) && Number.isFinite(c.end) && c.end > c.start && typeof c.text === 'string' && c.text.trim()).map(c => ({start:c.start,end:c.end,text:c.text.trim(),translation:typeof c.translation==='string'?c.translation:''})).sort((a,b)=>a.start-b.start) : [];
 
+// Display-only subtitle grouping: preserve the original transcription in IndexedDB.
+// Prefer natural sentence boundaries; approximate sub-cue timing by character share
+// when Whisper returns one unusually long segment without word timestamps.
+function readableCaptions(cues) {
+  const output=[];
+  for (const cue of cues || []) {
+    const text=cue.text.trim();
+    if (!text) continue;
+    const isCjk=/[\u3400-\u9fff]/.test(text);
+    const max=isCjk?30:85;
+    if (Array.from(text).length<=max) {output.push(cue);continue;}
+    const sentences=text.match(/[^。！？!?；;]+[。！？!?；;]*|[^。！？!?；;]+$/gu)||[text];
+    const pieces=[];
+    let buffer='';
+    const flush=()=>{if(buffer.trim())pieces.push(buffer.trim());buffer='';};
+    for(const sentence of sentences){
+      const candidate=(buffer+sentence).trim();
+      if(Array.from(candidate).length<=max){buffer=candidate;continue;}
+      flush();
+      if(Array.from(sentence).length<=max){buffer=sentence;continue;}
+      const units=sentence.match(/[^，,、]+[，,、]*|[^，,、]+$/gu)||[sentence];
+      for(const unit of units){
+        const joined=(buffer+unit).trim();
+        if(Array.from(joined).length<=max){buffer=joined;continue;}
+        flush();
+        if(Array.from(unit).length<=max){buffer=unit;continue;}
+        // Last resort: long speech without punctuation. Prefer spaces for English.
+        const words=isCjk?Array.from(unit):unit.split(/(\s+)/);
+        for(const word of words){
+          if(Array.from(buffer+word).length>max)flush();
+          buffer+=word;
+        }
+      }
+    }
+    flush();
+    if(pieces.length<2){output.push(cue);continue;}
+    const total=pieces.reduce((sum,p)=>sum+Array.from(p).length,0);
+    let elapsed=0;
+    for(let i=0;i<pieces.length;i++){
+      const start=cue.start+(cue.end-cue.start)*elapsed/total;
+      elapsed+=Array.from(pieces[i]).length;
+      const end=i===pieces.length-1?cue.end:cue.start+(cue.end-cue.start)*elapsed/total;
+      output.push({start,end,text:pieces[i],translation:''});
+    }
+  }
+  return output;
+}
+
 async function loadLocalRecords(){try{localRecords=(await listLocalAudio()).map(record=>({...record,captions:normalizedCaptions(record.captions),audioUrl:localUrls.get(record.id)||URL.createObjectURL(record.blob)}));localRecords.forEach(record=>localUrls.set(record.id,record.audioUrl));renderCollection();}catch{$('importStatus').textContent='无法读取本机音频，请检查浏览器存储权限。';}}
 // Preserve the original single keepsake on first upgrade; afterwards respect explicit removals.
 try {
@@ -133,7 +181,13 @@ function renderCollection() {
   $('favoriteButton').setAttribute('aria-pressed', String(ids.has(currentId)));
 }
 
-const activeCaption = (voice, time) => voice.captions?.find((caption) => time >= Math.max(0, caption.start - 0.08) && time < caption.end) || null;
+const captionCache = new WeakMap();
+const activeCaption = (voice, time) => {
+  if(!voice.captions?.length)return null;
+  let cues=captionCache.get(voice.captions);
+  if(!cues){cues=readableCaptions(voice.captions);captionCache.set(voice.captions,cues);}
+  return cues.find(caption=>time>=Math.max(0,caption.start-0.08)&&time<caption.end)||null;
+};
 
 function updateRepeatControl(announce = false) {
   const isOne = repeatMode === 'one';
