@@ -235,10 +235,12 @@ function resizeCanvas() {
   }
 }
 
-// The light follows the actual audio envelope; no clock-driven expanding rings.
+// Soft daylight-readable sun: the audio envelope drives light and outward travelling ripples.
 let lightLevel = 0;
-let lightPeak = 0;
+let previousEnergy = 0;
 let lastFrame = 0;
+let lastRipple = -1000;
+const ripples = [];
 function drawAudioLight(now) {
   resizeCanvas();
   const { width, height } = canvas.getBoundingClientRect();
@@ -253,50 +255,68 @@ function drawAudioLight(now) {
   }
   const follow = (previous, next, attack, release) =>
     previous + (next - previous) * (1 - Math.exp(-dt / (next > previous ? attack : release)));
-  smooth.bass = follow(smooth.bass, target.bass, 0.055, 0.22);
-  smooth.mid = follow(smooth.mid, target.mid, 0.045, 0.17);
-  smooth.high = follow(smooth.high, target.high, 0.035, 0.13);
-  const energy = Math.min(1, smooth.bass * 0.52 + smooth.mid * 0.8 + smooth.high * 0.22);
-  lightLevel = follow(lightLevel, energy, 0.055, 0.24);
-  lightPeak = follow(lightPeak, energy, 0.025, 0.42);
+  smooth.bass = follow(smooth.bass, target.bass, 0.045, 0.24);
+  smooth.mid = follow(smooth.mid, target.mid, 0.045, 0.19);
+  smooth.high = follow(smooth.high, target.high, 0.035, 0.14);
+  const energy = Math.min(1, smooth.bass * 0.45 + smooth.mid * 0.85 + smooth.high * 0.2);
+  lightLevel = follow(lightLevel, energy, 0.06, 0.3);
   const cx = width / 2, cy = height / 2;
-  const radius = Math.min(width, height) * 0.19;
-  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * (1.75 + lightLevel * 0.38));
-  glow.addColorStop(0, `rgba(255,253,238,${0.91 + lightLevel * 0.09})`);
-  glow.addColorStop(0.075, `rgba(255,245,218,${0.83 + lightLevel * 0.16})`);
-  glow.addColorStop(0.19, `rgba(252,230,189,${0.48 + lightLevel * 0.27})`);
-  glow.addColorStop(0.42, `rgba(241,205,151,${0.13 + lightLevel * 0.17})`);
-  glow.addColorStop(0.72, `rgba(232,187,125,${0.018 + lightLevel * 0.052})`);
-  glow.addColorStop(1, 'rgba(232,187,125,0)');
+  const size = Math.min(width, height);
+  // A wider luminous body, not a tiny overexposed white point surrounded by brown fog.
+  const radius = size * (0.26 + lightLevel * 0.035);
+  const ambient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.65);
+  ambient.addColorStop(0, 'rgba(255,245,225,0.20)');
+  ambient.addColorStop(0.36, `rgba(248,223,187,${0.13 + lightLevel * 0.07})`);
+  ambient.addColorStop(0.75, 'rgba(226,202,175,0.025)');
+  ambient.addColorStop(1, 'rgba(226,202,175,0)');
+  ctx.fillStyle = ambient;
+  ctx.fillRect(0, 0, width, height);
+  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+  glow.addColorStop(0, 'rgba(255,252,239,0.96)');
+  glow.addColorStop(0.12, 'rgba(255,249,231,0.94)');
+  glow.addColorStop(0.29, `rgba(255,239,211,${0.81 + lightLevel * 0.12})`);
+  glow.addColorStop(0.48, `rgba(251,228,196,${0.48 + lightLevel * 0.2})`);
+  glow.addColorStop(0.72, `rgba(243,213,178,${0.17 + lightLevel * 0.11})`);
+  glow.addColorStop(1, 'rgba(239,209,178,0)');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, height);
   if (!reducedMotion.matches) {
-    // Two overlapping, blurred, non-uniform wave contours, not complete concentric orbits.
-    for (let layer = 0; layer < 2; layer += 1) {
-      const base = radius * (0.47 + layer * 0.22);
-      const strength = lightLevel * (3.6 + layer * 3.4);
+    // Launch only on meaningful vocal onsets; existing ripples continue outward in silence.
+    const onset = energy - previousEnergy;
+    if (active && energy > 0.105 && onset > 0.018 && now - lastRipple > 260) {
+      ripples.push({ radius: radius * 0.35, opacity: Math.min(1, 0.42 + energy * 0.65) });
+      lastRipple = now;
+    }
+    previousEnergy = energy;
+    const maxRadius = size * 0.46;
+    for (let n = ripples.length - 1; n >= 0; n--) {
+      const ripple = ripples[n];
+      ripple.radius += dt * size * 0.105;
+      ripple.opacity *= Math.exp(-dt * 0.88);
+      if (ripple.radius >= maxRadius || ripple.opacity < 0.025) {
+        ripples.splice(n, 1);
+        continue;
+      }
+      const fade = Math.max(0, 1 - ripple.radius / maxRadius);
       ctx.beginPath();
-      for (let i = 0; i <= 192; i++) {
-        const angle = i / 192 * Math.PI * 2;
-        const shape = Math.sin(angle * 3 + layer * 1.7) * 1.5
-          + Math.sin(angle * 7 - layer * 0.9) * 0.8;
-        const voice = strength * (
-          Math.sin(angle * 4 + now * 0.0011 + layer) * (0.5 + smooth.mid)
-          + Math.sin(angle * 9 - now * 0.0017) * smooth.high * 0.65
-        );
-        const r = base + shape + voice + lightPeak * (3 + layer * 3);
-        const x = cx + Math.cos(angle) * r;
-        const y = cy + Math.sin(angle) * r * 0.96;
+      for (let i = 0; i <= 128; i++) {
+        const angle = i / 128 * Math.PI * 2;
+        const r = ripple.radius + Math.sin(angle * 3 + ripple.radius * 0.018) * 0.85
+          + Math.sin(angle * 7 - ripple.radius * 0.013) * 0.4;
+        const x = cx + Math.cos(angle) * r, y = cy + Math.sin(angle) * r;
         if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.strokeStyle = `rgba(255,239,205,${0.055 + lightLevel * (0.14 - layer * 0.025)})`;
-      ctx.lineWidth = 2.8 + lightLevel * 2;
-      ctx.shadowColor = 'rgba(255,230,184,.52)';
-      ctx.shadowBlur = 13 + lightLevel * 12;
+      ctx.strokeStyle = `rgba(255,237,208,${ripple.opacity * fade * 0.18})`;
+      ctx.lineWidth = 0.75;
+      ctx.shadowColor = 'rgba(255,232,202,0.25)';
+      ctx.shadowBlur = 6;
       ctx.stroke();
     }
     ctx.shadowBlur = 0;
+  } else {
+    ripples.length = 0;
+    previousEnergy = 0;
   }
   requestAnimationFrame(drawAudioLight);
 }
