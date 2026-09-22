@@ -36,7 +36,7 @@ app.innerHTML = `
       <button class="loop-control" id="loopButton" type="button" aria-label="列表循环">
         <span class="loop-glyph" aria-hidden="true">↻</span><span class="loop-one" aria-hidden="true">1</span>
       </button>
-      <button class="favorite-control" id="favoriteButton" type="button" aria-label="收藏当前声音" aria-pressed="false">♧</button>
+      <button class="favorite-control" id="favoriteButton" type="button" aria-label="收藏当前声音" aria-pressed="false"><svg class="favorite-star" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M32 5 C35 22 42 29 59 32 C42 35 35 42 32 59 C29 42 22 35 5 32 C22 29 29 22 32 5Z"/></svg></button>
       <p class="status" id="status" role="status"></p>
     </section>
     <section class="collection-drawer" id="collectionDrawer" aria-labelledby="collectionTitle" hidden>
@@ -44,7 +44,7 @@ app.innerHTML = `
       <div class="collection-panel">
         <div class="collection-topline"><div><p>VOICE KEEPSAKES</p><h1 id="collectionTitle">我们的收藏 <span id="collectionCount">01</span></h1></div><button class="collection-close" id="collectionClose" type="button" aria-label="关闭收藏">×</button></div>
         <div class="collection-track" id="collectionTrack"></div>
-        <p class="collection-hint">点播放聆听 · 点书签取消收藏</p>
+        <p class="collection-hint">点播放聆听 · 点星芒取消收藏</p>
       </div>
     </section>
   </main>
@@ -97,12 +97,12 @@ function renderCollection() {
   $('collectionTrack').innerHTML = items.length ? items.map((voice) => `
     <div class="voice-row ${voice.id === currentId ? 'is-active' : ''}">
       <button class="voice-row-play" type="button" data-voice="${voice.id}" aria-label="播放${voice.title}">
-        <span class="voice-play-icon" aria-hidden="true">${voice.id === currentId && !audio.paused ? 'Ⅱ' : '▶'}</span>
+        <span class="voice-play-icon${voice.id === currentId && !audio.paused ? ' is-playing' : ''}" aria-hidden="true"></span>
         <span class="voice-meta"><span class="voice-title"></span><span class="voice-date"></span></span>
         <span class="voice-duration">${formatTime(voice.duration, false)}</span>
       </button>
-      <button class="voice-remove" type="button" data-remove="${voice.id}" aria-label="取消收藏${voice.title}" title="取消收藏">♧</button>
-    </div>`).join('') : '<p class="collection-empty">还没有收藏的声音。<br>播放一段声音，点下方书签就能收进这里。</p>';
+      <button class="voice-remove" type="button" data-remove="${voice.id}" aria-label="取消收藏${voice.title}" title="取消收藏"><svg class="favorite-star" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M32 5 C35 22 42 29 59 32 C42 35 35 42 32 59 C29 42 22 35 5 32 C22 29 29 22 32 5Z"/></svg></button>
+    </div>`).join('') : '<p class="collection-empty">还没有收藏的声音。<br>播放一段声音，点下方星芒就能收进这里。</p>';
   items.forEach((voice, index) => {
     const row = $('collectionTrack').children[index];
     row.querySelector('.voice-title').textContent = voice.title;
