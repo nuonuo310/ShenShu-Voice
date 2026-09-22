@@ -238,12 +238,16 @@ function resizeCanvas() {
 // Soft daylight-readable sun: the audio envelope drives light and outward travelling ripples.
 let lightLevel = 0;
 let previousEnergy = 0;
+let envelopeFloor = 0;
+let envelopeCeiling = 0.18;
 let lastFrame = 0;
 let lastRipple = -1000;
 const ripples = [];
 function drawAudioLight(now) {
   resizeCanvas();
   const { width, height } = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
   const dt = Math.min(0.05, Math.max(0.001, (now - (lastFrame || now - 16)) / 1000));
   lastFrame = now;
@@ -255,15 +259,21 @@ function drawAudioLight(now) {
   }
   const follow = (previous, next, attack, release) =>
     previous + (next - previous) * (1 - Math.exp(-dt / (next > previous ? attack : release)));
-  smooth.bass = follow(smooth.bass, target.bass, 0.045, 0.22);
-  smooth.mid = follow(smooth.mid, target.mid, 0.045, 0.19);
-  smooth.high = follow(smooth.high, target.high, 0.035, 0.14);
-  const energy = Math.min(1, smooth.bass * 0.45 + smooth.mid * 0.85 + smooth.high * 0.2);
-  lightLevel = follow(lightLevel, energy, 0.055, 0.28);
+  smooth.bass = follow(smooth.bass, target.bass, 0.04, 0.12);
+  smooth.mid = follow(smooth.mid, target.mid, 0.035, 0.11);
+  smooth.high = follow(smooth.high, target.high, 0.03, 0.1);
+  const rawEnergy = active ? Math.min(1, smooth.bass * 0.35 + smooth.mid * 0.95 + smooth.high * 0.22) : 0;
+  // Track the local vocal dynamic range so quiet recordings still visibly open and close.
+  envelopeFloor = follow(envelopeFloor, rawEnergy, 1.6, 0.32);
+  envelopeCeiling = follow(envelopeCeiling, rawEnergy, 0.16, 2.1);
+  const dynamicRange = Math.max(0.12, envelopeCeiling - envelopeFloor);
+  const voiceEnergy = active ? Math.min(1, Math.max(0, (rawEnergy - envelopeFloor * 0.68) / dynamicRange)) : 0;
+  const breathTarget = active ? Math.min(1, voiceEnergy * 0.9) : 0;
+  lightLevel = follow(lightLevel, breathTarget, 0.07, 0.19);
   const cx = width / 2, cy = height / 2;
   const size = Math.min(width, height);
-  const outerRadius = size * 0.34 * (1 + lightLevel * 0.28);
-  // One continuous radial gradient: no layered translucent discs or dark seams.
+  // Preserve the approved palette; the entire continuous gradient breathes together.
+  const outerRadius = size * 0.285 * (1 + lightLevel * 0.53);
   const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerRadius * 1.19);
   glow.addColorStop(0, 'rgba(255,248,224,0.95)');
   glow.addColorStop(0.10, 'rgba(255,244,215,0.94)');
@@ -276,22 +286,26 @@ function drawAudioLight(now) {
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, height);
   if (!reducedMotion.matches) {
-    const onset = energy - previousEnergy;
-    if (active && energy > 0.09 && onset > 0.012 && now - lastRipple > 340) {
-      ripples.push({ radius: outerRadius * 1.03, opacity: Math.min(1, 0.62 + energy * 0.38) });
+    // A new vocal onset releases a wave at the CURRENT halo edge. Older waves
+    // travel independently, so two or three expanding rings can overlap briefly.
+    const onset = voiceEnergy - previousEnergy;
+    if (active && voiceEnergy > 0.16 && onset > 0.085 && now - lastRipple > 190) {
+      ripples.push({ radius: outerRadius * 1.19, opacity: Math.min(1, 0.55 + voiceEnergy * 0.4), age: 0 });
+      if (ripples.length > 5) ripples.shift();
       lastRipple = now;
     }
-    previousEnergy = energy;
-    const maxRadius = Math.min(width * 0.49, height * 0.49);
+    previousEnergy = voiceEnergy;
+    const maxRadius = size * 0.51;
     for (let n = ripples.length - 1; n >= 0; n--) {
       const ripple = ripples[n];
-      ripple.radius += dt * size * 0.18;
-      ripple.opacity *= Math.exp(-dt * 0.56);
-      if (ripple.radius >= maxRadius || ripple.opacity < 0.025) {
+      ripple.age += dt;
+      ripple.radius += dt * size * 0.16;
+      const life = Math.max(0, 1 - ripple.age / 1.25);
+      const edgeFade = Math.max(0, Math.min(1, (maxRadius - ripple.radius) / (size * 0.1)));
+      if (life <= 0 || edgeFade <= 0) {
         ripples.splice(n, 1);
         continue;
       }
-      const fade = Math.max(0, Math.min(1, (maxRadius - ripple.radius) / (size * 0.12)));
       ctx.beginPath();
       for (let i = 0; i <= 128; i++) {
         const angle = i / 128 * Math.PI * 2;
@@ -301,10 +315,10 @@ function drawAudioLight(now) {
         if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.strokeStyle = `rgba(255,231,192,${ripple.opacity * fade * 0.34})`;
-      ctx.lineWidth = 0.9;
-      ctx.shadowColor = 'rgba(255,234,205,0.48)';
-      ctx.shadowBlur = 7;
+      ctx.strokeStyle = `rgba(255,231,192,${ripple.opacity * life * edgeFade * 0.31})`;
+      ctx.lineWidth = 0.85;
+      ctx.shadowColor = 'rgba(255,234,205,0.42)';
+      ctx.shadowBlur = 6;
       ctx.stroke();
     }
     ctx.shadowBlur = 0;
