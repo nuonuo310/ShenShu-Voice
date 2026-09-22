@@ -1,5 +1,6 @@
 import { voices, formatTime, getFavorites, toggleFavorite } from '../../packages/voice-data/index.js';
 import './style.css';
+import { importLocalAudio, listLocalAudio } from '../../packages/voice-data/local-audio.js';
 
 const STORAGE_KEY = 'shenshu:sun-player';
 const FAVORITES_INITIALIZED = 'shenshu:gallery-favorites-initialized';
@@ -43,7 +44,7 @@ app.innerHTML = `
       <button class="collection-backdrop" id="collectionBackdrop" type="button" aria-label="关闭收藏"></button>
       <div class="collection-panel">
         <div class="collection-topline"><div><p>VOICE KEEPSAKES</p><h1 id="collectionTitle">我们的收藏 <span id="collectionCount">01</span></h1></div><button class="collection-close" id="collectionClose" type="button" aria-label="关闭收藏">×</button></div>
-        <div class="collection-track" id="collectionTrack"></div>
+        <div class="collection-track" id="collectionTrack"></div><div class="import-area"><button id="importOpen" class="import-open" type="button">＋ 导入声音</button><p class="import-note">当前仅保存在这台设备的浏览器中，尚未云端备份或开放给哥哥读取。</p><form id="importForm" hidden><input id="importFile" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac" required><input id="importTitle" type="text" maxlength="80" placeholder="声音名称"><input id="importNotes" type="text" maxlength="200" placeholder="备注（可选）"><button type="submit">保存到本机收藏</button></form><p id="importStatus" role="status"></p></div>
         <p class="collection-hint">点播放聆听 · 点星芒取消收藏</p>
       </div>
     </section>
@@ -57,6 +58,10 @@ const canvas = $('audioCanvas');
 const ctx = canvas.getContext('2d');
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const available = voices.filter((voice) => voice.audioUrl);
+const localUrls = new Map();
+let localRecords = [];
+const playable = () => [...available, ...localRecords];
+async function loadLocalRecords(){try{localRecords=(await listLocalAudio()).map(record=>({...record,audioUrl:localUrls.get(record.id)||URL.createObjectURL(record.blob)}));localRecords.forEach(record=>localUrls.set(record.id,record.audioUrl));renderCollection();}catch{$('importStatus').textContent='无法读取本机音频，请检查浏览器存储权限。';}}
 // Preserve the original single keepsake on first upgrade; afterwards respect explicit removals.
 try {
   if (!localStorage.getItem(FAVORITES_INITIALIZED)) {
@@ -82,7 +87,7 @@ function readSavedState() {
 const saved = readSavedState();
 if (voices.some((voice) => voice.id === saved.id)) currentId = saved.id;
 if (saved.repeatMode === 'one') repeatMode = 'one';
-const currentVoice = () => voices.find((voice) => voice.id === currentId) || voices[0];
+const currentVoice = () => playable().find((voice) => voice.id === currentId) || voices[0];
 
 function persist() {
   if (!currentId) return;
@@ -91,8 +96,8 @@ function persist() {
 
 function renderCollection() {
   const ids = favorites();
-  const items = available.filter((voice) => ids.has(voice.id));
-  $('availableCount').textContent = available.length;
+  const items = playable().filter((voice) => ids.has(voice.id));
+  $('availableCount').textContent = playable().length;
   $('collectionCount').textContent = String(items.length).padStart(2, '0');
   $('collectionTrack').innerHTML = items.length ? items.map((voice) => `
     <div class="voice-row ${voice.id === currentId ? 'is-active' : ''}">
@@ -228,14 +233,14 @@ async function togglePlayback() {
 }
 
 async function playFollowingVoice() {
-  if (!available.length) return;
+  if (!playable().length) return;
   if (repeatMode === 'one') {
     audio.currentTime = 0;
     await audio.play();
     return;
   }
-  const currentIndex = Math.max(0, available.findIndex((voice) => voice.id === currentId));
-  const nextVoice = available[currentIndex + 1];
+  const currentIndex = Math.max(0, playable().findIndex((voice) => voice.id === currentId));
+  const nextVoice = playable()[currentIndex + 1];
   if (!nextVoice) {
     updatePlayer();
     persist();
@@ -412,7 +417,7 @@ $('collectionTrack').addEventListener('click', async (event) => {
   }
   const button = event.target.closest('[data-voice]');
   if (!button) return;
-  const voice = voices.find((candidate) => candidate.id === button.dataset.voice);
+  const voice = playable().find((candidate) => candidate.id === button.dataset.voice);
   if (!voice?.audioUrl) return;
   closeCollection();
   if (voice.id !== currentId) loadVoice(voice);
@@ -443,6 +448,22 @@ audio.addEventListener('error', () => { $('status').textContent = '音频没有�
 window.addEventListener('pagehide', persist);
 window.addEventListener('resize', resizeCanvas);
 
+$('importOpen').addEventListener('click',()=>{$('importForm').hidden=!$('importForm').hidden;});
+$('importForm').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const file=$('importFile').files[0];if(!file)return;
+  const submit=$('importForm').querySelector('[type="submit"]');submit.disabled=true;
+  try{
+    const record=await importLocalAudio(file,$('importTitle').value,$('importNotes').value);
+    await loadLocalRecords();
+    toggleFavorite(record.id);
+    renderCollection();
+    $('importForm').reset();$('importForm').hidden=true;
+    $('importStatus').textContent='已保存到本机收藏。请保留原始音频文件，当前尚未云端备份。';
+  }catch(error){$('importStatus').textContent=error?.message||'导入失败，请检查本机存储空间。';}
+  finally{submit.disabled=false;}
+});
 loadVoice(currentVoice(), true);
+loadLocalRecords();
 updateRepeatControl();
 requestAnimationFrame(drawAudioLight);
