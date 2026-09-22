@@ -8,6 +8,7 @@ export default defineConfig({
       input: {
         gallery: resolve(import.meta.dirname, 'index.html'),
         card: resolve(import.meta.dirname, 'card.html'),
+        bubble: resolve(import.meta.dirname, 'bubble.html'),
       },
     },
   },
