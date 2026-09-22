@@ -18,7 +18,7 @@ app.innerHTML = `
       </svg>
     </button>
     <section class="sun-stage" aria-label="声音播放器">
-      <div class="ambient-stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="ambient-stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <canvas id="audioCanvas" aria-hidden="true"></canvas>
       <div class="sound-core" id="soundCore" aria-hidden="true"></div>
     </section>
@@ -100,6 +100,11 @@ function updateRepeatControl(announce = false) {
     $('status').textContent = message;
     window.setTimeout(() => { if ($('status').textContent === message) $('status').textContent = ''; }, 1400);
   }
+}
+
+function hideControls() {
+  window.clearTimeout(controlsTimer);
+  document.querySelector('.timeline').classList.remove('is-visible');
 }
 
 function showControls(hold = false) {
@@ -352,8 +357,9 @@ $('loopButton').addEventListener('click', (event) => {
   if (event.detail) event.currentTarget.blur();
 });
 document.querySelector('.voice-archive').addEventListener('pointerdown', (event) => {
-  if (event.target.closest('.collection-drawer')) return;
-  showControls(event.target.closest('.timeline') !== null);
+  if (event.target.closest('.collection-drawer, .collection-charm, .timeline')) return;
+  if (document.querySelector('.timeline').classList.contains('is-visible')) hideControls();
+  else showControls();
 });
 $('collectionCharm').addEventListener('click', () => {
   $('collectionDrawer').hidden = false;
