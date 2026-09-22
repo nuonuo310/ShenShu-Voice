@@ -255,51 +255,43 @@ function drawAudioLight(now) {
   }
   const follow = (previous, next, attack, release) =>
     previous + (next - previous) * (1 - Math.exp(-dt / (next > previous ? attack : release)));
-  smooth.bass = follow(smooth.bass, target.bass, 0.045, 0.23);
-  smooth.mid = follow(smooth.mid, target.mid, 0.045, 0.20);
-  smooth.high = follow(smooth.high, target.high, 0.035, 0.15);
+  smooth.bass = follow(smooth.bass, target.bass, 0.045, 0.22);
+  smooth.mid = follow(smooth.mid, target.mid, 0.045, 0.19);
+  smooth.high = follow(smooth.high, target.high, 0.035, 0.14);
   const energy = Math.min(1, smooth.bass * 0.45 + smooth.mid * 0.85 + smooth.high * 0.2);
-  lightLevel = follow(lightLevel, energy, 0.065, 0.29);
+  lightLevel = follow(lightLevel, energy, 0.055, 0.28);
   const cx = width / 2, cy = height / 2;
   const size = Math.min(width, height);
-  // Every color stop shares the same breathing radius: the peach-pink edge moves too.
-  const breath = 1 + lightLevel * 0.27;
-  const outerRadius = size * 0.34 * breath;
-  const ambient = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerRadius * 1.32);
-  ambient.addColorStop(0, 'rgba(255,237,208,0.075)');
-  ambient.addColorStop(0.45, `rgba(255,211,183,${0.055 + lightLevel * 0.035})`);
-  ambient.addColorStop(0.76, 'rgba(249,206,196,0.016)');
-  ambient.addColorStop(1, 'rgba(249,206,196,0)');
-  ctx.fillStyle = ambient;
-  ctx.fillRect(0, 0, width, height);
-  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerRadius);
-  glow.addColorStop(0, 'rgba(255,250,230,0.94)');
-  glow.addColorStop(0.12, 'rgba(255,245,220,0.93)');
-  glow.addColorStop(0.27, `rgba(255,228,192,${0.79 + lightLevel * 0.08})`);
-  glow.addColorStop(0.48, `rgba(255,211,177,${0.42 + lightLevel * 0.12})`);
-  glow.addColorStop(0.68, `rgba(252,207,187,${0.18 + lightLevel * 0.07})`);
-  glow.addColorStop(0.86, `rgba(249,211,203,${0.065 + lightLevel * 0.03})`);
-  glow.addColorStop(1, 'rgba(249,211,203,0)');
+  const outerRadius = size * 0.34 * (1 + lightLevel * 0.28);
+  // One continuous radial gradient: no layered translucent discs or dark seams.
+  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerRadius * 1.19);
+  glow.addColorStop(0, 'rgba(255,248,224,0.95)');
+  glow.addColorStop(0.10, 'rgba(255,244,215,0.94)');
+  glow.addColorStop(0.24, 'rgba(255,225,182,0.88)');
+  glow.addColorStop(0.40, 'rgba(255,194,147,0.72)');
+  glow.addColorStop(0.55, 'rgba(255,181,146,0.48)');
+  glow.addColorStop(0.70, 'rgba(249,189,170,0.29)');
+  glow.addColorStop(0.86, 'rgba(247,201,188,0.105)');
+  glow.addColorStop(1, 'rgba(247,201,188,0)');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, height);
   if (!reducedMotion.matches) {
-    // Ripples originate OUTSIDE the colored glow, never inside or enclosing its pink layer.
     const onset = energy - previousEnergy;
-    if (active && energy > 0.105 && onset > 0.018 && now - lastRipple > 260) {
-      ripples.push({ radius: outerRadius * 1.02, opacity: Math.min(1, 0.48 + energy * 0.6) });
+    if (active && energy > 0.09 && onset > 0.012 && now - lastRipple > 340) {
+      ripples.push({ radius: outerRadius * 1.03, opacity: Math.min(1, 0.62 + energy * 0.38) });
       lastRipple = now;
     }
     previousEnergy = energy;
     const maxRadius = Math.min(width * 0.49, height * 0.49);
     for (let n = ripples.length - 1; n >= 0; n--) {
       const ripple = ripples[n];
-      ripple.radius += dt * size * 0.21;
-      ripple.opacity *= Math.exp(-dt * 0.72);
-      if (ripple.radius >= maxRadius || ripple.opacity < 0.018) {
+      ripple.radius += dt * size * 0.18;
+      ripple.opacity *= Math.exp(-dt * 0.56);
+      if (ripple.radius >= maxRadius || ripple.opacity < 0.025) {
         ripples.splice(n, 1);
         continue;
       }
-      const fade = Math.max(0, (maxRadius - ripple.radius) / (maxRadius - outerRadius * 0.95));
+      const fade = Math.max(0, Math.min(1, (maxRadius - ripple.radius) / (size * 0.12)));
       ctx.beginPath();
       for (let i = 0; i <= 128; i++) {
         const angle = i / 128 * Math.PI * 2;
@@ -309,10 +301,10 @@ function drawAudioLight(now) {
         if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.strokeStyle = `rgba(255,227,207,${ripple.opacity * fade * 0.14})`;
-      ctx.lineWidth = 0.7;
-      ctx.shadowColor = 'rgba(255,226,205,0.22)';
-      ctx.shadowBlur = 5;
+      ctx.strokeStyle = `rgba(255,231,192,${ripple.opacity * fade * 0.34})`;
+      ctx.lineWidth = 0.9;
+      ctx.shadowColor = 'rgba(255,234,205,0.48)';
+      ctx.shadowBlur = 7;
       ctx.stroke();
     }
     ctx.shadowBlur = 0;
