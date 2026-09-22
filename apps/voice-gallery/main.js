@@ -235,69 +235,68 @@ function resizeCanvas() {
   }
 }
 
+// The light follows the actual audio envelope; no clock-driven expanding rings.
+let lightLevel = 0;
+let lightPeak = 0;
+let lastFrame = 0;
 function drawAudioLight(now) {
   resizeCanvas();
-  const rect = canvas.getBoundingClientRect();
-  const width = rect.width, height = rect.height;
+  const { width, height } = canvas.getBoundingClientRect();
   ctx.clearRect(0, 0, width, height);
-  let target = { bass: 0.025, mid: 0.02, high: 0.012 };
-  if (analyser && !audio.paused && !reducedMotion.matches) {
+  const dt = Math.min(0.05, Math.max(0.001, (now - (lastFrame || now - 16)) / 1000));
+  lastFrame = now;
+  const active = !audio.paused && !audio.ended && !reducedMotion.matches;
+  let target = { bass: 0, mid: 0, high: 0 };
+  if (active && analyser && frequencyData) {
     analyser.getByteFrequencyData(frequencyData);
     target = { bass: average(1, 8), mid: average(8, 32), high: average(32, 96) };
   }
-  smooth.bass += (target.bass - smooth.bass) * 0.09;
-  smooth.mid += (target.mid - smooth.mid) * 0.08;
-  smooth.high += (target.high - smooth.high) * 0.06;
-  const playing = !audio.paused;
-  const idleBreath = reducedMotion.matches ? 0 : Math.sin(now / 1450) * 0.006;
-  const scale = 1 + idleBreath + (playing ? smooth.bass * 0.21 + smooth.mid * 0.045 : 0);
-  document.documentElement.style.setProperty('--core-scale', scale.toFixed(4));
-  document.documentElement.style.setProperty('--core-alpha', (0.68 + smooth.mid * 0.3).toFixed(3));
-
+  const follow = (previous, next, attack, release) =>
+    previous + (next - previous) * (1 - Math.exp(-dt / (next > previous ? attack : release)));
+  smooth.bass = follow(smooth.bass, target.bass, 0.055, 0.22);
+  smooth.mid = follow(smooth.mid, target.mid, 0.045, 0.17);
+  smooth.high = follow(smooth.high, target.high, 0.035, 0.13);
+  const energy = Math.min(1, smooth.bass * 0.52 + smooth.mid * 0.8 + smooth.high * 0.22);
+  lightLevel = follow(lightLevel, energy, 0.055, 0.24);
+  lightPeak = follow(lightPeak, energy, 0.025, 0.42);
+  const cx = width / 2, cy = height / 2;
+  const radius = Math.min(width, height) * 0.19;
+  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * (1.75 + lightLevel * 0.38));
+  glow.addColorStop(0, `rgba(255,253,238,${0.91 + lightLevel * 0.09})`);
+  glow.addColorStop(0.075, `rgba(255,245,218,${0.83 + lightLevel * 0.16})`);
+  glow.addColorStop(0.19, `rgba(252,230,189,${0.48 + lightLevel * 0.27})`);
+  glow.addColorStop(0.42, `rgba(241,205,151,${0.13 + lightLevel * 0.17})`);
+  glow.addColorStop(0.72, `rgba(232,187,125,${0.018 + lightLevel * 0.052})`);
+  glow.addColorStop(1, 'rgba(232,187,125,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, width, height);
   if (!reducedMotion.matches) {
-    const cx = width / 2, cy = height / 2;
-    const fieldRadius = Math.min(width, height) * 0.43;
-    const energy = smooth.bass * 0.65 + smooth.mid * 0.95;
-    ctx.save();
-    ctx.lineJoin = 'round';
-    for (let ring = 0; ring < 3; ring += 1) {
-      const speed = playing ? 2300 : 6200;
-      const phase = ((now / speed) + ring / 3) % 1;
-      const radius = fieldRadius * (0.28 + phase * 0.72);
-      const fade = Math.sin(Math.PI * phase) * (playing ? 1 : 0.2);
+    // Two overlapping, blurred, non-uniform wave contours, not complete concentric orbits.
+    for (let layer = 0; layer < 2; layer += 1) {
+      const base = radius * (0.47 + layer * 0.22);
+      const strength = lightLevel * (3.6 + layer * 3.4);
       ctx.beginPath();
-      for (let point = 0; point <= 150; point += 1) {
-        const ratio = point / 150;
-        const angle = ratio * Math.PI * 2;
-        const organic = Math.sin(angle * 2 + now / 1750 + ring) * (0.42 + ring * 0.12);
-        const response = playing ? (
-          Math.sin(angle * 2 + now / 980) * smooth.bass * 2.8 +
-          Math.sin(angle * 3 - now / 1280) * smooth.mid * 2.25 +
-          Math.sin(angle * 5 + now / 1540) * smooth.high * 1.35
-        ) * (0.72 + ring * 0.16) : 0;
-        const r = radius + organic + response;
+      for (let i = 0; i <= 192; i++) {
+        const angle = i / 192 * Math.PI * 2;
+        const shape = Math.sin(angle * 3 + layer * 1.7) * 1.5
+          + Math.sin(angle * 7 - layer * 0.9) * 0.8;
+        const voice = strength * (
+          Math.sin(angle * 4 + now * 0.0011 + layer) * (0.5 + smooth.mid)
+          + Math.sin(angle * 9 - now * 0.0017) * smooth.high * 0.65
+        );
+        const r = base + shape + voice + lightPeak * (3 + layer * 3);
         const x = cx + Math.cos(angle) * r;
-        const y = cy + Math.sin(angle) * r * 0.965;
-        if (point === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        const y = cy + Math.sin(angle) * r * 0.96;
+        if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.strokeStyle = `rgba(242, 224, 195, ${0.01 + fade * (0.04 + energy * 0.085)})`;
-      ctx.lineWidth = 0.46 + energy * 0.5;
-      ctx.shadowColor = `rgba(247, 229, 198, ${0.07 + energy * 0.13})`;
-      ctx.shadowBlur = 11 + energy * 12;
+      ctx.strokeStyle = `rgba(255,239,205,${0.055 + lightLevel * (0.14 - layer * 0.025)})`;
+      ctx.lineWidth = 2.8 + lightLevel * 2;
+      ctx.shadowColor = 'rgba(255,230,184,.52)';
+      ctx.shadowBlur = 13 + lightLevel * 12;
       ctx.stroke();
     }
     ctx.shadowBlur = 0;
-    const particleCount = playing ? 8 : 5;
-    for (let i = 0; i < particleCount; i += 1) {
-      const orbit = fieldRadius * (0.52 + ((i * 37) % 54) / 100);
-      const angle = i * 2.399 + now * (0.000025 + (i % 3) * 0.000008);
-      const pulse = 0.5 + 0.5 * Math.sin(now / 900 + i * 1.7);
-      const size = 0.45 + pulse * (0.7 + smooth.high * 0.7);
-      ctx.fillStyle = `rgba(235, 243, 249, ${0.13 + pulse * 0.25 + smooth.high * 0.1})`;
-      ctx.beginPath(); ctx.arc(cx + Math.cos(angle) * orbit, cy + Math.sin(angle) * orbit * 0.72, size, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore();
   }
   requestAnimationFrame(drawAudioLight);
 }
